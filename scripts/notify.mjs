@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import nodemailer from 'nodemailer';
 import { config, sharedKey, readShared, readJSON, writeJSON, SCHEDULE_FILE, USERS_DIR, STATE_DIR } from './lib/common.mjs';
 import { decryptJSON, userFileId } from '../docs/js/crypto.js';
-import { blocksForDate, findTeachers, hwOpen, lessonMs, normGroup, normName, plural, todayISO, addDays, TZ_OFFSET_HOURS } from '../docs/js/lessons.js';
+import { blocksForDate, findTeachers, groupDays, hwOpen, lessonMs, lessonRoom, normName, plural, todayISO, addDays, TZ_OFFSET_HOURS } from '../docs/js/lessons.js';
 
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');
@@ -21,10 +21,11 @@ if (!existsSync(SCHEDULE_FILE)) {
 const ownerKey = process.env.OWNER_KEY;
 if (!ownerKey) throw new Error('Не задан OWNER_KEY (пароль владельца почты)');
 const user = await decryptJSON(readJSON(join(USERS_DIR, (await userFileId(ownerKey)) + '.enc.json')), ownerKey);
-const { teachers } = await readShared();
+const shared = await readShared();
+const { teachers } = shared;
 const { fio, group } = user.settings;
 const all = await decryptJSON(readJSON(SCHEDULE_FILE), sharedKey());
-const schedule = { days: all.groups[normGroup(group)] || {} };
+const schedule = { days: groupDays(all, shared, group) };
 const statePath = join(STATE_DIR, 'notify.json');
 const state = readJSON(statePath, { sent: {} });
 const n = config.notify;
@@ -72,7 +73,7 @@ for (const b of blocks) {
   const k = `pair:${today}:${b.start}`;
   const left = minutes(b.startMs - nowMs);
   if (state.sent[k] || left > n.remindBeforeMin || left < -15) continue;
-  const room = findTeachers(teachers, b.teacher).find(t => t.room)?.room;
+  const room = lessonRoom(teachers, b);
   const hw = openHw.filter(h => normName(h.subject) === normName(b.subject));
   outbox.push({
     key: k,

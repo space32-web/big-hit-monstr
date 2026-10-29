@@ -124,12 +124,31 @@ input, textarea {
 
 /* Нижние вкладки */
 .tabs {
-  position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr);
+  position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
   background: var(--surface); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom);
 }
 .tabs button { background: none; border: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 14px 4px; cursor: pointer; }
 .tabs button.active { color: var(--accent); }
 .badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; line-height: 18px; }
+
+/* Админка */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.drop {
+  display: grid; gap: 8px; place-items: center; text-align: center; padding: 16px;
+  border: 2px dashed var(--border); border-radius: 12px; cursor: pointer; color: var(--muted);
+}
+.drop.over { border-color: var(--accent); }
+.drop img { max-width: 100%; max-height: 360px; border-radius: 8px; }
+.slot { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; }
+.slot.empty { opacity: .6; }
+.slot .head { display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.slot input { font-size: 14px; padding: 8px 10px; }
+.slot .auto { font-size: 12px; color: var(--ok); }
+.slot .warn { font-size: 12px; color: var(--warn); }
+.row-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.row-item:last-child { border-bottom: none; }
+.row-item .acts { display: flex; gap: 6px; flex-shrink: 0; }
+.secret { font: 600 18px ui-monospace, monospace; user-select: all; overflow-wrap: anywhere; }
 
 .toast {
   position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%);

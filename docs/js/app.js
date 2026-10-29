@@ -1,6 +1,6 @@
 import { encryptJSON, decryptJSON, userFileId } from './crypto.js';
 import {
-  addDays, blocksForDate, collegeNow, findTeachers, hwOpen, nextSubjectDate, normGroup, normName, plural, todayISO, upcomingBlocks,
+  addDays, blocksForDate, collegeNow, findTeachers, groupDays, hwOpen, lessonRoom, nextSubjectDate, normGroup, normName, plural, todayISO, upcomingBlocks,
 } from './lessons.js';
 
 const $ = sel => document.querySelector(sel);
@@ -23,6 +23,7 @@ let schedule = null;     // { days } группы этого пользоват�
 let store = null;        // личное: settings, homework, sharedKey
 let shared = null;       // общее: teachers, groups
 const shas = {};         // sha файлов в репозитории для обновления через API
+let admin = null;        // модуль админки, грузится только для админа
 let weekStart = mondayOf(todayISO());
 
 // ---------- Доступ к данным ----------
@@ -37,7 +38,7 @@ function repo() {
   }
   return '';
 }
-const token = () => LS.get('token') || store?.ghToken;
+const token = () => LS.get('token') || shared?.ghToken;
 const canWrite = () => Boolean(token() && repo());
 
 function ghHeaders() {
@@ -86,9 +87,14 @@ async function loadData() {
   if (loadBox.offline) toast('Нет сети — показаны сохранённые данные');
 }
 
+// Админ может смотреть любую группу, остальные — свою
+function viewGroup() {
+  return normGroup((store.admin && LS.get('adminGroup')) || store.settings.group);
+}
+
 function applyGroup() {
-  const days = allSchedule.groups[normGroup(store.settings.group)] || {};
-  schedule = { ...allSchedule, group: normGroup(store.settings.group), days };
+  const group = viewGroup();
+  schedule = { ...allSchedule, group, days: groupDays(allSchedule, shared, group) };
 }
 
 async function saveFile(path, obj, key, message) {
@@ -172,7 +178,7 @@ async function copy(text) {
 }
 
 function roomFor(block) {
-  return findTeachers(shared.teachers, block.teacher).find(t => t.room)?.room || '';
+  return lessonRoom(shared.teachers, block);
 }
 
 const joinName = () => `${store.settings.fio} ${store.settings.group}`;
@@ -180,7 +186,7 @@ const chatText = () => `${store.settings.fio}, я на паре`;
 
 async function join(block) {
   const room = roomFor(block);
-  if (!room) return toast('Нет ссылки на комнату — добавь во вкладке «Ещё»');
+  if (!room) return toast('Ссылки на эту пару пока нет — её добавит админ');
   const copied = copy(joinName()); // копируем, пока действует клик пользователя
   const win = window.open(room, '_blank');
   if (win) win.opener = null;
@@ -219,13 +225,8 @@ document.addEventListener('change', async e => {
     h.doneAt = el.checked ? new Date().toISOString() : undefined;
     renderAll();
     if (!(await saveStore(el.checked ? 'ДЗ: выполнено' : 'ДЗ: снова открыто'))) { h.done = !el.checked; renderAll(); }
-  } else if (el.matches('[data-teacher-room]')) {
-    const t = shared.teachers[Number(el.dataset.teacherRoom)];
-    const prev = t.room;
-    t.room = el.value.trim();
-    if (await saveShared(`Ссылка: ${t.name}`)) toast('Ссылка сохранена');
-    else { t.room = prev; renderTeachers(); }
   }
+
 });
 
 // ---------- Отрисовка ----------
@@ -268,8 +269,8 @@ function renderHero(now) {
     hero.innerHTML = `
       <div class="state">Пар не найдено</div>
       <div class="subject">В расписании нет ближайших пар</div>
-      <div class="countdown muted">Последний день в файле: ${dates.length ? esc(dayTitle(dates[dates.length - 1])) : '—'}.
-      Если начался новый семестр — проверь ссылку на расписание в config.json.</div>`;
+      <div class="countdown muted">Последний загруженный день: ${dates.length ? esc(dayTitle(dates[dates.length - 1])) : '—'}.
+      Новое расписание появится, когда админ загрузит скрин.</div>`;
     return;
   }
   const live = next.startMs <= now;
@@ -284,7 +285,7 @@ function renderHero(now) {
     <div class="actions">
       ${room
         ? `<button class="btn primary" data-action="join" data-date="${next.date}" data-start="${next.start}">Войти на пару</button>`
-        : '<span class="chip">Нет ссылки на комнату — добавь во вкладке «Ещё»</span>'}
+        : '<span class="chip">Ссылки на эту пару пока нет</span>'}
       <button class="btn" data-action="copy-chat">Скопировать «я на паре»</button>
     </div>`;
 }
@@ -337,26 +338,11 @@ function renderHw() {
   $('#subjects').innerHTML = subjects.map(s => `<option value="${esc(s)}">`).join('');
 }
 
-function renderTeachers() {
-  $('#teacherList').innerHTML = shared.teachers
-    .map((t, i) => `
-      <div class="teacher">
-        <div class="name">${esc(t.name)}</div>
-        <input type="url" value="${esc(t.room)}" placeholder="ссылка на комнату" data-teacher-room="${i}">
-      </div>`)
-    .join('');
-}
-
 function renderMore() {
-  renderTeachers();
-  $('#sFio').value = store.settings.fio;
-  $('#sGroup').value = store.settings.group;
-  $('#repoInput').value = repo();
-  $('#writeStatus').textContent = canWrite() ? '✓ Запись включена' : 'Только чтение — изменения не сохранятся';
-  $('#writeStatus').className = 'small ' + (canWrite() ? '' : 'error');
-  const fetched = schedule.fetchedAt ? new Date(schedule.fetchedAt).toLocaleString('ru-RU') : '—';
-  const modified = schedule.modified ? new Date(schedule.modified).toLocaleString('ru-RU') : '—';
-  $('#schedInfo').textContent = `Группа ${schedule.group}. Файл расписания изменён: ${modified}. Проверено: ${fetched}.`;
+  $('#profileInfo').innerHTML = `<b>${esc(store.settings.fio)}</b><br>Группа ${esc(normGroup(store.settings.group))}${store.admin ? ' · админ' : ''}`;
+  const days = Object.keys(schedule.days).sort();
+  $('#schedInfo').textContent = `Показана группа ${schedule.group}. Последний день в расписании: ${days.length ? dayTitle(days[days.length - 1]) : '—'}.`;
+  if (admin) admin.render();
 }
 
 function renderClock(now) {
@@ -413,44 +399,6 @@ $('#hwForm').addEventListener('submit', async e => {
   }
 });
 
-$('#teacherForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const t = { name: $('#tName').value.trim(), room: $('#tRoom').value.trim() };
-  shared.teachers.push(t);
-  if (await saveShared(`Преподаватель: ${t.name}`)) { e.target.reset(); toast('Добавлено'); }
-  else shared.teachers.pop();
-  renderTeachers();
-});
-
-$('#saveSettings').onclick = async () => {
-  const prev = { ...store.settings };
-  store.settings.fio = $('#sFio').value.trim();
-  store.settings.group = normGroup($('#sGroup').value);
-  if (!(await saveStore('Профиль'))) {
-    store.settings = prev;
-    return;
-  }
-  applyGroup();
-  renderAll();
-  // новая группа попадёт в расписание при следующей загрузке (раз в 2 часа)
-  if (!shared.groups.includes(store.settings.group)) {
-    shared.groups.push(store.settings.group);
-    await saveShared(`Группа ${store.settings.group}`);
-    return toast('Сохранено. Расписание новой группы появится в течение 2 часов');
-  }
-  toast('Сохранено');
-};
-
-$('#saveToken').onclick = () => {
-  const r = $('#repoInput').value.trim();
-  const t = $('#tokenInput').value.trim();
-  r ? LS.set('repo', r) : LS.del('repo');
-  if (t) LS.set('token', t);
-  $('#tokenInput').value = '';
-  for (const k of Object.keys(shas)) shas[k] = null;
-  renderMore();
-  toast('Сохранено на этом устройстве');
-};
 
 $('#logoutBtn').onclick = () => {
   if (!confirm('Удалить пароль и токен с этого устройства?')) return;
@@ -477,7 +425,19 @@ async function start() {
   }
   $('#login').hidden = true;
   $('#app').hidden = false;
-  showTab(LS.get('tab') || 'today');
+  if (store.admin && !admin) {
+    $('#adminTab').hidden = false;
+    const { initAdmin } = await import('./admin.js');
+    admin = initAdmin({
+      get shared() { return shared; },
+      get store() { return store; },
+      get allSchedule() { return allSchedule; },
+      LS, toast, esc, repo, canWrite, ghHeaders, saveFile, saveShared, dayTitle,
+      refresh() { applyGroup(); renderAll(); },
+    });
+  }
+  const tab = LS.get('tab');
+  showTab(tab === 'admin' && !store.admin ? 'today' : tab || 'today');
   renderAll();
   setInterval(() => { const now = Date.now(); renderClock(now); renderHero(now); renderToday(now); }, 30000);
 }

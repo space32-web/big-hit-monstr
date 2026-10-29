@@ -2,7 +2,7 @@
 // (профиль, ДЗ и общий ключ). Расписание и преподаватели — в общих файлах под общим ключом.
 //
 //   DATA_KEY=... node scripts/users.mjs init-shared            создать shared.enc.json из seed/store.json
-//   DATA_KEY=... node scripts/users.mjs add "ФИО" 3426 [--password X]   новый пользователь, печатает пароль
+//   DATA_KEY=... node scripts/users.mjs add "ФИО" 3426 [--password X] [--admin]   новый пользователь, печатает пароль
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -22,17 +22,19 @@ if (cmd === 'init-shared') {
   const group = normGroup(groupArg);
   const pi = args.indexOf('--password');
   const password = pi > 0 ? args[pi + 1] : randomBytes(12).toString('base64url');
-  const file = join(USERS_DIR, (await userFileId(password)) + '.enc.json');
+  const admin = args.includes('--admin');
+  const id = await userFileId(password);
+  const file = join(USERS_DIR, id + '.enc.json');
   if (existsSync(file)) throw new Error('Пользователь с таким паролем уже есть');
-  const user = { settings: { fio, group }, homework: [], sharedKey: sharedKey() };
+  const user = { settings: { fio, group }, homework: [], sharedKey: sharedKey(), ...(admin && { admin: true }) };
   writeJSON(file, await encryptJSON(user, password));
 
   const shared = await readShared();
-  if (!shared.groups.includes(group)) {
-    shared.groups.push(group);
-    writeJSON(SHARED_FILE, await encryptJSON(shared, sharedKey()));
-  }
+  if (!shared.groups.includes(group)) shared.groups.push(group);
+  shared.users ??= [];
+  shared.users.push({ id, fio, group, ...(admin && { admin: true }) });
+  writeJSON(SHARED_FILE, await encryptJSON(shared, sharedKey()));
   console.log(`${fio} (${group}): ${password}`);
 } else {
-  console.log('Команды: init-shared | add "ФИО" группа [--password X]');
+  console.log('Команды: init-shared | add "ФИО" группа [--password X] [--admin]');
 }

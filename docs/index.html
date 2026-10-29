@@ -80,8 +80,50 @@
           </div>
         </div>
         <div class="card">
-          <h2>Преподаватели и комнаты</h2>
-          <p class="muted small">В расписании только фамилия — по ней находится ссылка на ВКС-комнату.</p>
+          <h2>Профиль</h2>
+          <p id="profileInfo"></p>
+          <p class="muted small">ФИО, группу и ссылки на пары настраивает админ.</p>
+        </div>
+        <div class="card">
+          <p id="schedInfo" class="muted small"></p>
+          <button id="logoutBtn" class="btn danger">Выйти на этом устройстве</button>
+        </div>
+      </section>
+
+      <!-- Админ -->
+      <section data-view="admin" hidden>
+        <p id="adminWarn" class="card error" hidden></p>
+
+        <div class="card form">
+          <h2>Расписание со скрина</h2>
+          <div class="grid2">
+            <label>Группа<input id="aGroup" list="aGroups" autocomplete="off"></label>
+            <label>Дата<input id="aDate" type="date"></label>
+          </div>
+          <datalist id="aGroups"></datalist>
+          <label class="drop" id="aDrop">
+            <input id="aFile" type="file" accept="image/*" hidden>
+            <span>Нажми, чтобы выбрать скрин, или вставь его (Ctrl+V)</span>
+            <img id="aPreview" alt="" hidden>
+          </label>
+          <p id="aStatus" class="muted small"></p>
+          <div id="aRows"></div>
+          <datalist id="aSubjects"></datalist>
+          <datalist id="aTeachers"></datalist>
+          <div class="links">
+            <button id="aPublish" class="btn primary" type="button">Опубликовать для всех</button>
+            <button id="aClearDay" class="btn danger" type="button">Убрать этот день</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Загруженные дни</h2>
+          <div id="aDays"></div>
+        </div>
+
+        <div class="card">
+          <h2>Преподаватели и ссылки</h2>
+          <p class="muted small">В расписании только фамилия — по ней подставляется ссылка. Изменения сохраняются сразу.</p>
           <div id="teacherList"></div>
           <form id="teacherForm" class="form inline-form">
             <input id="tName" placeholder="Фамилия Имя Отчество" required>
@@ -89,23 +131,36 @@
             <button class="btn" type="submit">Добавить</button>
           </form>
         </div>
-        <div class="card form">
-          <h2>Профиль</h2>
-          <label>ФИО<input id="sFio"></label>
-          <label>Группа<input id="sGroup"></label>
-          <button id="saveSettings" class="btn">Сохранить</button>
-        </div>
-        <div class="card form">
-          <h2>Доступ на запись</h2>
-          <p class="muted small">Чтобы сохранять ДЗ и ссылки с этого устройства, нужен GitHub-токен (fine-grained, доступ Contents: Read and write только к этому репозиторию). Хранится только в этом браузере.</p>
-          <label>Репозиторий<input id="repoInput" placeholder="логин/репозиторий"></label>
-          <label>Токен<input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"></label>
-          <button id="saveToken" class="btn">Сохранить</button>
-          <p id="writeStatus" class="small"></p>
-        </div>
+
         <div class="card">
-          <p id="schedInfo" class="muted small"></p>
-          <button id="logoutBtn" class="btn danger">Выйти на этом устройстве</button>
+          <h2>Пользователи</h2>
+          <div id="aUsers"></div>
+          <form id="userForm" class="form inline-form">
+            <input id="uFio" placeholder="Фамилия Имя Отчество" required>
+            <input id="uGroup" placeholder="Группа, например 3426" required>
+            <button class="btn" type="submit">Создать и выдать пароль</button>
+          </form>
+          <div id="uResult" class="card hero" hidden></div>
+        </div>
+
+        <div class="card form">
+          <h2>Время пар</h2>
+          <label>По порядку, через запятую<input id="aSlots"></label>
+          <button id="aSaveSlots" class="btn" type="button">Сохранить</button>
+        </div>
+
+        <div class="card form">
+          <h2>Смотреть расписание группы</h2>
+          <label>Группа на вкладках «Сегодня» и «Неделя»<input id="aView" list="aGroups"></label>
+          <button id="aSaveView" class="btn" type="button">Показать</button>
+        </div>
+
+        <div class="card form">
+          <h2>Доступ GitHub</h2>
+          <p class="muted small">Fine-grained токен с доступом Contents: Read and write к репозиторию. Сохраняется зашифрованным для всех пользователей — им ничего настраивать не нужно.</p>
+          <label>Токен<input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+          <button id="saveToken" class="btn" type="button">Сохранить</button>
+          <p id="writeStatus" class="small"></p>
         </div>
       </section>
     </main>
@@ -115,6 +170,7 @@
       <button data-tab="week">Неделя</button>
       <button data-tab="hw">ДЗ <span id="hwBadge" class="badge" hidden></span></button>
       <button data-tab="more">Ещё</button>
+      <button data-tab="admin" id="adminTab" hidden>Админ</button>
     </nav>
   </div>
 

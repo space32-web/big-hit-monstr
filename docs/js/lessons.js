@@ -53,6 +53,47 @@ export function findTeachers(teachers, cell) {
     });
 }
 
+// Время пар по умолчанию (меняется в админке)
+export const DEFAULT_SLOTS = ['17:30-18:15', '18:25-19:10', '19:20-20:05', '20:15-21:00'];
+
+// Дни группы: старый файл расписания, ручные дни для всех, дни из админки (главнее всех)
+export function groupDays(allSchedule, shared, group) {
+  const g = normGroup(group);
+  return { ...(allSchedule?.groups?.[g] || {}), ...(shared?.extraDays || {}), ...(shared?.days?.[g] || {}) };
+}
+
+// Ссылка на комнату: своя у урока или по преподавателю
+export function lessonRoom(teachers, lesson) {
+  return lesson.room || findTeachers(teachers, lesson.teacher).find(t => t.room)?.room || '';
+}
+
+// Похожесть строк 0..1 (Левенштейн по буквам) — исправляет ошибки распознавания
+export function similarity(a, b) {
+  a = normName(a);
+  b = normName(b);
+  if (!a || !b) return 0;
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j];
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diag = tmp;
+    }
+  }
+  return 1 - prev[b.length] / Math.max(a.length, b.length);
+}
+
+export function bestMatch(text, options, min) {
+  let best = null, score = min;
+  for (const o of options) {
+    const s = similarity(text, o);
+    if (s >= score) { best = o; score = s; }
+  }
+  return best;
+}
+
 // Соседние уроки с тем же предметом и преподавателем объединяются в одну "пару"
 export function groupLessons(lessons) {
   const blocks = [];
