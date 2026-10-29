@@ -1,0 +1,137 @@
+:root {
+  --bg: #f6f4f5;
+  --surface: #ffffff;
+  --text: #1d1a1c;
+  --muted: #6d666a;
+  --border: #e4dfe2;
+  --accent: #8b1e3f;
+  --accent-soft: #f6e6ec;
+  --ok: #1f7a4d;
+  --ok-soft: #e3f3ea;
+  --warn: #a35d00;
+  --warn-soft: #fbefdc;
+  --danger: #b3261e;
+  --radius: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141113;
+    --surface: #1f1b1d;
+    --text: #f1ecef;
+    --muted: #a59ca1;
+    --border: #3a3337;
+    --accent: #e0668c;
+    --accent-soft: #3a1f29;
+    --ok: #5fcf95;
+    --ok-soft: #1b3326;
+    --warn: #f0b35a;
+    --warn-soft: #3a2c16;
+    --danger: #ff7a70;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+[hidden] { display: none !important; }
+h1 { font-size: 22px; margin: 8px 0; }
+h2 { font-size: 15px; margin: 20px 0 8px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.card h2 { margin-top: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+.error { color: var(--danger); }
+
+/* Вход */
+.login { max-width: 360px; margin: 12vh auto 0; padding: 0 16px; text-align: center; }
+.login form { display: grid; gap: 10px; margin-top: 16px; }
+
+/* Каркас */
+#app { max-width: 720px; margin: 0 auto; padding: 0 16px calc(84px + env(safe-area-inset-bottom)); }
+.top { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 6px; }
+.title { font-weight: 700; font-size: 18px; }
+.icon-btn { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 10px; width: 40px; height: 40px; font-size: 20px; cursor: pointer; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; }
+
+/* Кнопки и поля */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 600;
+  text-decoration: none; cursor: pointer; min-height: 42px;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--danger); }
+.btn.small { padding: 6px 10px; min-height: 34px; font-size: 13px; }
+.btn:disabled { opacity: .5; cursor: default; }
+input, textarea {
+  width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font: inherit;
+}
+.form { display: grid; gap: 10px; }
+.form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.inline-form { margin-top: 10px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Главная карточка */
+.hero { border-color: var(--accent); background: linear-gradient(135deg, var(--accent-soft), var(--surface)); }
+.hero .state { font-size: 13px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+.hero .subject { font-size: 22px; font-weight: 700; margin: 4px 0; }
+.hero .countdown { font-size: 15px; margin-bottom: 12px; }
+.hero .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Пары */
+.lesson { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; }
+.lesson .time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.lesson .time small { display: block; color: var(--muted); font-weight: 400; }
+.lesson .subj { font-weight: 600; }
+.lesson .meta { color: var(--muted); font-size: 13px; }
+.lesson .row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.lesson.past { opacity: .55; }
+.lesson.now { border-color: var(--ok); background: var(--ok-soft); }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--warn-soft); color: var(--warn); }
+.chip.ok { background: var(--ok-soft); color: var(--ok); }
+
+.day-head { margin: 18px 0 8px; font-weight: 700; }
+.day-head.today { color: var(--accent); }
+.empty { color: var(--muted); padding: 8px 2px; }
+
+/* Неделя */
+.week-nav { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; margin-top: 8px; }
+.week-label { text-align: center; font-weight: 600; }
+
+/* ДЗ */
+.hw { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; }
+.hw input[type=checkbox] { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--accent); }
+.hw .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.hw .subj { font-weight: 600; }
+.hw.overdue { border-color: var(--danger); }
+.hw.done .text { text-decoration: line-through; color: var(--muted); }
+.hw .del { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 4px; }
+.done-block summary { cursor: pointer; color: var(--muted); margin: 16px 0 8px; }
+
+/* Преподаватели */
+.teacher { display: grid; gap: 4px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.teacher:last-child { border-bottom: none; }
+.teacher .name { font-weight: 600; }
+.teacher input { font-size: 13px; padding: 6px 10px; }
+
+/* Нижние вкладки */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--surface); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom);
+}
+.tabs button { background: none; border: none; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; padding: 14px 4px; cursor: pointer; }
+.tabs button.active { color: var(--accent); }
+.badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; line-height: 18px; }
+
+.toast {
+  position: fixed; left: 50%; bottom: calc(80px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; max-width: calc(100% - 32px);
+}

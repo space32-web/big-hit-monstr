@@ -1,0 +1,39 @@
+name: Напоминания
+
+on:
+  schedule:
+    - cron: '*/10 3-18 * * *' # каждые 10 минут с 06:00 до 21:59 по Москве
+  workflow_dispatch:
+
+concurrency:
+  group: repo-write
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/notify.mjs
+        env:
+          DATA_KEY: ${{ secrets.DATA_KEY }}
+          MAIL_USER: ${{ secrets.MAIL_USER }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+      - name: Запомнить отправленное
+        run: |
+          git config user.name "knn-bot"
+          git config user.email "knn-bot@users.noreply.github.com"
+          git add state
+          git diff --cached --quiet && exit 0
+          git commit -m "Отправлены напоминания"
+          git pull --rebase
+          git push

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>КНН трекер</title>
+  <meta name="theme-color" content="#8b1e3f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Вход: пароль данных -->
+  <section id="login" class="login" hidden>
+    <img src="icon.svg" alt="" width="64" height="64">
+    <h1>КНН трекер</h1>
+    <p class="muted">Данные зашифрованы. Введи пароль (DATA_KEY).</p>
+    <form id="loginForm">
+      <input id="loginPass" type="password" autocomplete="current-password" placeholder="Пароль" required>
+      <button class="btn primary" type="submit">Открыть</button>
+      <p id="loginErr" class="error" hidden></p>
+    </form>
+  </section>
+
+  <div id="app" hidden>
+    <header class="top">
+      <div>
+        <div class="title">КНН трекер</div>
+        <div id="clock" class="muted small"></div>
+      </div>
+      <button id="reloadBtn" class="icon-btn" title="Обновить данные" aria-label="Обновить данные">⟳</button>
+    </header>
+
+    <main>
+      <!-- Сегодня -->
+      <section data-view="today">
+        <div id="hero" class="card hero"></div>
+        <h2>Сегодня</h2>
+        <div id="todayList"></div>
+        <h2>Ближайшие ДЗ</h2>
+        <div id="todayHw"></div>
+      </section>
+
+      <!-- Неделя -->
+      <section data-view="week" hidden>
+        <div class="week-nav">
+          <button id="weekPrev" class="btn">←</button>
+          <div id="weekLabel" class="week-label"></div>
+          <button id="weekNext" class="btn">→</button>
+        </div>
+        <div id="weekList"></div>
+      </section>
+
+      <!-- ДЗ -->
+      <section data-view="hw" hidden>
+        <form id="hwForm" class="card form">
+          <h2>Новое ДЗ</h2>
+          <label>Предмет<input id="hwSubject" list="subjects" required autocomplete="off"></label>
+          <datalist id="subjects"></datalist>
+          <label>Задание<textarea id="hwText" rows="3" required></textarea></label>
+          <label>Сдать до<input id="hwDue" type="date"></label>
+          <button class="btn primary" type="submit">Добавить</button>
+        </form>
+        <h2>Открытые</h2>
+        <div id="hwOpenList"></div>
+        <details class="done-block">
+          <summary>Выполненные</summary>
+          <div id="hwDoneList"></div>
+        </details>
+      </section>
+
+      <!-- Ещё -->
+      <section data-view="more" hidden>
+        <div class="card">
+          <h2>Быстрые ссылки</h2>
+          <div class="links">
+            <a class="btn" href="https://dist.knn-nk.ru/" target="_blank" rel="noopener">Dist КНН</a>
+            <a class="btn" href="https://learn.webflare.space/dashboard" target="_blank" rel="noopener">learn.webflare</a>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Преподаватели и комнаты</h2>
+          <p class="muted small">В расписании только фамилия — по ней находится ссылка на ВКС-комнату.</p>
+          <div id="teacherList"></div>
+          <form id="teacherForm" class="form inline-form">
+            <input id="tName" placeholder="Фамилия Имя Отчество" required>
+            <input id="tRoom" type="url" placeholder="https://vks.knn-nk.ru/rooms/…/join">
+            <button class="btn" type="submit">Добавить</button>
+          </form>
+        </div>
+        <div class="card form">
+          <h2>Профиль</h2>
+          <label>ФИО<input id="sFio"></label>
+          <label>Группа<input id="sGroup"></label>
+          <button id="saveSettings" class="btn">Сохранить</button>
+        </div>
+        <div class="card form">
+          <h2>Доступ на запись</h2>
+          <p class="muted small">Чтобы сохранять ДЗ и ссылки с этого устройства, нужен GitHub-токен (fine-grained, доступ Contents: Read and write только к этому репозиторию). Хранится только в этом браузере.</p>
+          <label>Репозиторий<input id="repoInput" placeholder="логин/репозиторий"></label>
+          <label>Токен<input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+          <button id="saveToken" class="btn">Сохранить</button>
+          <p id="writeStatus" class="small"></p>
+        </div>
+        <div class="card">
+          <p id="schedInfo" class="muted small"></p>
+          <button id="logoutBtn" class="btn danger">Выйти на этом устройстве</button>
+        </div>
+      </section>
+    </main>
+
+    <nav class="tabs">
+      <button data-tab="today" class="active">Сегодня</button>
+      <button data-tab="week">Неделя</button>
+      <button data-tab="hw">ДЗ <span id="hwBadge" class="badge" hidden></span></button>
+      <button data-tab="more">Ещё</button>
+    </nav>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

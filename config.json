@@ -1,0 +1,13 @@
+{
+  "group": "3427А",
+  "schedule": {
+    "publicKey": "Z3RjujiVySK6YVppK1NmvZbiUeu4/jnk2ObcZx157S75D+yQc3VZP2JFLGbE2U0jq/J6bpmRyOJonT3VoXnDag==",
+    "path": "/2 курс/КНН.xlsx"
+  },
+  "notify": {
+    "smtpHost": "smtp.mail.ru",
+    "smtpPort": 465,
+    "remindBeforeMin": 20,
+    "digestAt": "07:00"
+  }
+}

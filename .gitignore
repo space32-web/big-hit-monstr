@@ -1,0 +1,7 @@
+node_modules/
+# исходники со старыми паролями и выгрузка 1С — в репозиторий не попадают
+*.dt
+*.xlsx
+seed/
+secrets.local.txt
+.debug/

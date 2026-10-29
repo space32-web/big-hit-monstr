@@ -1,0 +1,15 @@
+{
+  "name": "knn-tracker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch": "node scripts/fetch-schedule.mjs",
+    "notify": "node scripts/notify.mjs",
+    "seed": "node scripts/seed.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "dependencies": {
+    "nodemailer": "6.9.16",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}
