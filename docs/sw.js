@@ -1,5 +1,5 @@
 // Офлайн-кэш оболочки приложения. Данные (data/*) всегда берутся из сети.
-const CACHE = 'knn-v3';
+const CACHE = 'knn-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'js/app.js', 'js/admin.js', 'js/crypto.js', 'js/lessons.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {

@@ -440,6 +440,17 @@ async function start() {
   showTab(tab === 'admin' && !store.admin ? 'today' : tab || 'today');
   renderAll();
   setInterval(() => { const now = Date.now(); renderClock(now); renderHero(now); renderToday(now); }, 30000);
+  // новое расписание от админа подтягивается само: раз в 3 минуты и при возврате на вкладку
+  setInterval(silentRefresh, 3 * 60000);
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && silentRefresh());
+}
+
+async function silentRefresh() {
+  if (document.visibilityState !== 'visible' || document.activeElement?.matches('input, textarea')) return;
+  try {
+    await loadData();
+    renderAll();
+  } catch {}
 }
 
 function showLogin(err) {
