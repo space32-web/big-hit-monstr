@@ -36,9 +36,11 @@ async function download({ publicKey, path }) {
   return { buffer: Buffer.from(await res.arrayBuffer()), modified: meta.modified };
 }
 
-const { groups } = await readShared();
+const { groups, extraDays = {} } = await readShared();
 const { buffer, modified } = await download(config.schedule);
 const parsed = parseSchedule(buffer, groups);
+// Ручные дни из shared.extraDays — для всех групп, поверх файла
+for (const days of Object.values(parsed)) Object.assign(days, extraDays);
 for (const [g, days] of Object.entries(parsed)) {
   const dates = Object.keys(days).sort();
   console.log(`Группа ${g}: ${dates.length} дней с парами${dates.length ? `, ${dates[0]} … ${dates[dates.length - 1]}` : ''}`);
