@@ -1,35 +1,39 @@
 // Письма: утренняя сводка, напоминание перед парой, после пар — проверить ДЗ в MAX.
 // Запускается по расписанию каждые ~10 минут. Повторно одно и то же не шлёт (state/notify.json).
-// Запуск: DATA_KEY=... MAIL_PASSWORD=... node scripts/notify.mjs [--dry] [--now 2026-06-02T15:45]
+// Письма идут владельцу почты: его профиль и ДЗ читаются паролем OWNER_KEY.
+// Запуск: DATA_KEY=... OWNER_KEY=... MAIL_USER=... MAIL_PASSWORD=... node scripts/notify.mjs [--dry] [--now 2026-06-02T15:45]
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import nodemailer from 'nodemailer';
-import { config, dataKey, readJSON, writeJSON, SCHEDULE_FILE, STORE_FILE, STATE_DIR } from './lib/common.mjs';
-import { decryptJSON } from '../docs/js/crypto.js';
-import { blocksForDate, findTeachers, hwOpen, lessonMs, normName, plural, todayISO, addDays, TZ_OFFSET_HOURS } from '../docs/js/lessons.js';
+import { config, sharedKey, readShared, readJSON, writeJSON, SCHEDULE_FILE, USERS_DIR, STATE_DIR } from './lib/common.mjs';
+import { decryptJSON, userFileId } from '../docs/js/crypto.js';
+import { blocksForDate, findTeachers, hwOpen, lessonMs, normGroup, normName, plural, todayISO, addDays, TZ_OFFSET_HOURS } from '../docs/js/lessons.js';
 
 const args = process.argv.slice(2);
 const dry = args.includes('--dry');
 const nowArg = args.includes('--now') ? args[args.indexOf('--now') + 1] : null;
 const nowMs = nowArg ? Date.parse(nowArg + 'Z') - TZ_OFFSET_HOURS * 3600e3 : Date.now();
 
-const key = dataKey();
 if (!existsSync(SCHEDULE_FILE)) {
   console.log('Расписание ещё не загружено — запусти fetch-schedule');
   process.exit(0);
 }
-const schedule = await decryptJSON(readJSON(SCHEDULE_FILE), key);
-const store = await decryptJSON(readJSON(STORE_FILE), key);
+const ownerKey = process.env.OWNER_KEY;
+if (!ownerKey) throw new Error('Не задан OWNER_KEY (пароль владельца почты)');
+const user = await decryptJSON(readJSON(join(USERS_DIR, (await userFileId(ownerKey)) + '.enc.json')), ownerKey);
+const { teachers } = await readShared();
+const { fio, group } = user.settings;
+const all = await decryptJSON(readJSON(SCHEDULE_FILE), sharedKey());
+const schedule = { days: all.groups[normGroup(group)] || {} };
 const statePath = join(STATE_DIR, 'notify.json');
 const state = readJSON(statePath, { sent: {} });
-const { fio, group } = store.settings;
 const n = config.notify;
 const mailUser = process.env.MAIL_USER; // ящик mail.ru: с него шлём и на него же
 const appUrl = process.env.APP_URL || '';
 
 const today = todayISO(nowMs);
 const blocks = blocksForDate(schedule, today);
-const openHw = hwOpen(store);
+const openHw = hwOpen(user);
 const minutes = ms => Math.round(ms / 60000);
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -43,7 +47,7 @@ function hwList(items) {
 }
 
 function blockLine(b) {
-  const t = findTeachers(store.teachers, b.teacher).map(t => t.name).join(', ') || b.teacher;
+  const t = findTeachers(teachers, b.teacher).map(t => t.name).join(', ') || b.teacher;
   return `<b>${b.start}–${b.end}</b> ${esc(b.subject)}${t ? ` <span style="color:#666">(${esc(t)})</span>` : ''}`;
 }
 
@@ -68,8 +72,7 @@ for (const b of blocks) {
   const k = `pair:${today}:${b.start}`;
   const left = minutes(b.startMs - nowMs);
   if (state.sent[k] || left > n.remindBeforeMin || left < -15) continue;
-  const teachers = findTeachers(store.teachers, b.teacher);
-  const room = teachers.find(t => t.room)?.room;
+  const room = findTeachers(teachers, b.teacher).find(t => t.room)?.room;
   const hw = openHw.filter(h => normName(h.subject) === normName(b.subject));
   outbox.push({
     key: k,

@@ -1,9 +1,9 @@
-// Скачивает расписание с публичного Яндекс Диска, вытаскивает свою группу и сохраняет зашифрованным.
+// Скачивает расписание с публичного Яндекс Диска, вытаскивает группы из профилей и сохраняет зашифрованным.
 // Запуск: DATA_KEY=... node scripts/fetch-schedule.mjs [--plain out.json]
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { parseSchedule } from './lib/parse.mjs';
-import { config, dataKey, readJSON, writeJSON, SCHEDULE_FILE, STATE_DIR } from './lib/common.mjs';
+import { config, sharedKey, readShared, readJSON, writeJSON, SCHEDULE_FILE, STATE_DIR } from './lib/common.mjs';
 import { encryptJSON } from '../docs/js/crypto.js';
 
 const API = 'https://cloud-api.yandex.net/v1/disk/public/resources';
@@ -36,25 +36,28 @@ async function download({ publicKey, path }) {
   return { buffer: Buffer.from(await res.arrayBuffer()), modified: meta.modified };
 }
 
-const plainIdx = process.argv.indexOf('--plain');
+const { groups } = await readShared();
 const { buffer, modified } = await download(config.schedule);
-const days = parseSchedule(buffer, config.group);
-const dates = Object.keys(days).sort();
-console.log(`Группа ${config.group}: ${dates.length} дней с парами, ${dates[0]} … ${dates[dates.length - 1]}`);
+const parsed = parseSchedule(buffer, groups);
+for (const [g, days] of Object.entries(parsed)) {
+  const dates = Object.keys(days).sort();
+  console.log(`Группа ${g}: ${dates.length} дней с парами${dates.length ? `, ${dates[0]} … ${dates[dates.length - 1]}` : ''}`);
+}
 
+const plainIdx = process.argv.indexOf('--plain');
 if (plainIdx > 0) {
-  writeJSON(process.argv[plainIdx + 1], { group: config.group, modified, days });
+  writeJSON(process.argv[plainIdx + 1], { modified, groups: parsed });
   process.exit(0);
 }
 
-const hash = createHash('sha256').update(JSON.stringify(days)).digest('hex');
+const hash = createHash('sha256').update(JSON.stringify(parsed)).digest('hex');
 const statePath = join(STATE_DIR, 'schedule.json');
 const state = readJSON(statePath, {});
 if (state.hash === hash) {
   console.log('Расписание не изменилось');
   process.exit(0);
 }
-const schedule = { group: config.group, modified, fetchedAt: new Date().toISOString(), days };
-writeJSON(SCHEDULE_FILE, await encryptJSON(schedule, dataKey()));
-writeJSON(statePath, { hash, modified, fetchedAt: schedule.fetchedAt });
+const fetchedAt = new Date().toISOString();
+writeJSON(SCHEDULE_FILE, await encryptJSON({ modified, fetchedAt, groups: parsed }, sharedKey()));
+writeJSON(statePath, { hash, modified, fetchedAt });
 console.log('Расписание обновлено');

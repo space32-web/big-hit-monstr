@@ -1,6 +1,6 @@
-import { encryptJSON, decryptJSON } from './crypto.js';
+import { encryptJSON, decryptJSON, userFileId } from './crypto.js';
 import {
-  addDays, blocksForDate, collegeNow, findTeachers, hwOpen, nextSubjectDate, normName, plural, todayISO, upcomingBlocks,
+  addDays, blocksForDate, collegeNow, findTeachers, hwOpen, nextSubjectDate, normGroup, normName, plural, todayISO, upcomingBlocks,
 } from './lessons.js';
 
 const $ = sel => document.querySelector(sel);
@@ -14,12 +14,15 @@ const LS = {
 };
 
 const SCHEDULE_PATH = 'data/schedule.enc.json';
-const STORE_PATH = 'data/store.enc.json';
+const SHARED_PATH = 'data/shared.enc.json';
 
 let pass = LS.get('pass');
-let schedule = null;
-let store = null;
-let storeSha = null;
+let userPath = null;     // data/users/<id>.enc.json — выводится из пароля
+let allSchedule = null;  // расписание всех групп из профилей
+let schedule = null;     // { days } группы этого пользователя
+let store = null;        // личное: settings, homework, sharedKey
+let shared = null;       // общее: teachers, groups
+const shas = {};         // sha файлов в репозитории для обновления через API
 let weekStart = mondayOf(todayISO());
 
 // ---------- Доступ к данным ----------
@@ -34,7 +37,7 @@ function repo() {
   }
   return '';
 }
-const token = () => LS.get('token');
+const token = () => LS.get('token') || store?.ghToken;
 const canWrite = () => Boolean(token() && repo());
 
 function ghHeaders() {
@@ -53,55 +56,70 @@ async function fetchBox(path) {
     } catch {}
   }
   const res = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(`${path}: ${res.status}`), { status: res.status });
   return { box: await res.json(), sha: null };
 }
 
-async function loadData() {
-  let schedBox, storeRes;
+// Файл из сети, а без сети — последняя сохранённая копия
+async function loadBox(path) {
   try {
-    [schedBox, storeRes] = await Promise.all([fetchBox(SCHEDULE_PATH).then(r => r.box), fetchBox(STORE_PATH)]);
-    LS.set('cache:schedule', JSON.stringify(schedBox));
-    LS.set('cache:store', JSON.stringify(storeRes.box));
+    const { box, sha } = await fetchBox(path);
+    LS.set('cache:' + path, JSON.stringify(box));
+    shas[path] = sha;
+    return box;
   } catch (e) {
-    // нет сети — берём последнее сохранённое
-    const s = LS.get('cache:schedule'), st = LS.get('cache:store');
-    if (!s || !st) throw e;
-    schedBox = JSON.parse(s);
-    storeRes = { box: JSON.parse(st), sha: null };
-    toast('Нет сети — показаны сохранённые данные');
+    const cached = LS.get('cache:' + path);
+    if (!cached || e.status) throw e;
+    loadBox.offline = true;
+    return JSON.parse(cached);
   }
-  schedule = await decryptJSON(schedBox, pass);
-  store = await decryptJSON(storeRes.box, pass);
-  storeSha = storeRes.sha;
 }
 
-async function saveStore(message) {
+async function loadData() {
+  loadBox.offline = false;
+  userPath = `data/users/${await userFileId(pass)}.enc.json`;
+  store = await decryptJSON(await loadBox(userPath), pass);
+  const [schedBox, sharedBox] = await Promise.all([loadBox(SCHEDULE_PATH), loadBox(SHARED_PATH)]);
+  allSchedule = await decryptJSON(schedBox, store.sharedKey);
+  shared = await decryptJSON(sharedBox, store.sharedKey);
+  applyGroup();
+  if (loadBox.offline) toast('Нет сети — показаны сохранённые данные');
+}
+
+function applyGroup() {
+  const days = allSchedule.groups[normGroup(store.settings.group)] || {};
+  schedule = { ...allSchedule, group: normGroup(store.settings.group), days };
+}
+
+async function saveFile(path, obj, key, message) {
   if (!canWrite()) {
     toast('Чтобы сохранять, добавь GitHub-токен во вкладке «Ещё»');
     return false;
   }
-  const box = await encryptJSON(store, pass);
-  const body = json => JSON.stringify({ message, content: btoa(JSON.stringify(json, null, 2) + '\n'), sha: storeSha || undefined, branch: 'main' });
-  const url = `https://api.github.com/repos/${repo()}/contents/docs/${STORE_PATH}`;
+  const box = await encryptJSON(obj, key);
+  const url = `https://api.github.com/repos/${repo()}/contents/docs/${path}`;
   for (let attempt = 0; attempt < 2; attempt++) {
-    if (!storeSha) {
+    if (!shas[path]) {
       const cur = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: ghHeaders() });
-      if (cur.ok) storeSha = (await cur.json()).sha;
+      if (cur.ok) shas[path] = (await cur.json()).sha;
     }
-    const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body: body(box) });
+    const body = JSON.stringify({ message, content: btoa(JSON.stringify(box, null, 2) + '\n'), sha: shas[path] || undefined, branch: 'main' });
+    const res = await fetch(url, { method: 'PUT', headers: ghHeaders(), body });
     if (res.ok) {
-      storeSha = (await res.json()).content.sha;
-      LS.set('cache:store', JSON.stringify(box));
+      shas[path] = (await res.json()).content.sha;
+      LS.set('cache:' + path, JSON.stringify(box));
       return true;
     }
-    if (res.status === 409 || res.status === 422) { storeSha = null; continue; }
+    if (res.status === 409 || res.status === 422) { shas[path] = null; continue; }
     toast(`Не сохранилось: GitHub ответил ${res.status}`);
     return false;
   }
   toast('Не сохранилось: конфликт версий, обнови страницу');
   return false;
 }
+
+const saveStore = message => saveFile(userPath, store, pass, message);
+const saveShared = message => saveFile(SHARED_PATH, shared, store.sharedKey, message);
 
 // ---------- Время и форматирование ----------
 
@@ -154,7 +172,7 @@ async function copy(text) {
 }
 
 function roomFor(block) {
-  return findTeachers(store.teachers, block.teacher).find(t => t.room)?.room || '';
+  return findTeachers(shared.teachers, block.teacher).find(t => t.room)?.room || '';
 }
 
 const joinName = () => `${store.settings.fio} ${store.settings.group}`;
@@ -202,10 +220,10 @@ document.addEventListener('change', async e => {
     renderAll();
     if (!(await saveStore(el.checked ? 'ДЗ: выполнено' : 'ДЗ: снова открыто'))) { h.done = !el.checked; renderAll(); }
   } else if (el.matches('[data-teacher-room]')) {
-    const t = store.teachers[Number(el.dataset.teacherRoom)];
+    const t = shared.teachers[Number(el.dataset.teacherRoom)];
     const prev = t.room;
     t.room = el.value.trim();
-    if (await saveStore(`Ссылка: ${t.name}`)) toast('Ссылка сохранена');
+    if (await saveShared(`Ссылка: ${t.name}`)) toast('Ссылка сохранена');
     else { t.room = prev; renderTeachers(); }
   }
 });
@@ -213,7 +231,7 @@ document.addEventListener('change', async e => {
 // ---------- Отрисовка ----------
 
 function teacherNames(block) {
-  return findTeachers(store.teachers, block.teacher).map(t => t.name).join(', ') || block.teacher;
+  return findTeachers(shared.teachers, block.teacher).map(t => t.name).join(', ') || block.teacher;
 }
 
 function hwCountFor(subject) {
@@ -320,7 +338,7 @@ function renderHw() {
 }
 
 function renderTeachers() {
-  $('#teacherList').innerHTML = store.teachers
+  $('#teacherList').innerHTML = shared.teachers
     .map((t, i) => `
       <div class="teacher">
         <div class="name">${esc(t.name)}</div>
@@ -398,18 +416,29 @@ $('#hwForm').addEventListener('submit', async e => {
 $('#teacherForm').addEventListener('submit', async e => {
   e.preventDefault();
   const t = { name: $('#tName').value.trim(), room: $('#tRoom').value.trim() };
-  store.teachers.push(t);
-  if (await saveStore(`Преподаватель: ${t.name}`)) { e.target.reset(); toast('Добавлено'); }
-  else store.teachers.pop();
+  shared.teachers.push(t);
+  if (await saveShared(`Преподаватель: ${t.name}`)) { e.target.reset(); toast('Добавлено'); }
+  else shared.teachers.pop();
   renderTeachers();
 });
 
 $('#saveSettings').onclick = async () => {
   const prev = { ...store.settings };
   store.settings.fio = $('#sFio').value.trim();
-  store.settings.group = $('#sGroup').value.trim();
-  if (await saveStore('Профиль')) toast('Сохранено');
-  else store.settings = prev;
+  store.settings.group = normGroup($('#sGroup').value);
+  if (!(await saveStore('Профиль'))) {
+    store.settings = prev;
+    return;
+  }
+  applyGroup();
+  renderAll();
+  // новая группа попадёт в расписание при следующей загрузке (раз в 2 часа)
+  if (!shared.groups.includes(store.settings.group)) {
+    shared.groups.push(store.settings.group);
+    await saveShared(`Группа ${store.settings.group}`);
+    return toast('Сохранено. Расписание новой группы появится в течение 2 часов');
+  }
+  toast('Сохранено');
 };
 
 $('#saveToken').onclick = () => {
@@ -418,14 +447,14 @@ $('#saveToken').onclick = () => {
   r ? LS.set('repo', r) : LS.del('repo');
   if (t) LS.set('token', t);
   $('#tokenInput').value = '';
-  storeSha = null;
+  for (const k of Object.keys(shas)) shas[k] = null;
   renderMore();
   toast('Сохранено на этом устройстве');
 };
 
 $('#logoutBtn').onclick = () => {
   if (!confirm('Удалить пароль и токен с этого устройства?')) return;
-  ['pass', 'token', 'cache:schedule', 'cache:store'].forEach(LS.del);
+  ['pass', 'token', 'cache:' + SCHEDULE_PATH, 'cache:' + SHARED_PATH, 'cache:' + userPath].forEach(LS.del);
   location.reload();
 };
 
@@ -439,7 +468,7 @@ async function start() {
   try {
     await loadData();
   } catch (e) {
-    if (e.name === 'OperationError') { // неверный пароль
+    if (e.status === 404 || e.name === 'OperationError') { // файла под этот пароль нет — пароль неверный
       LS.del('pass');
       pass = null;
       return showLogin('Неверный пароль');

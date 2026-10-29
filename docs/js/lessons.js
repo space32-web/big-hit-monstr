@@ -29,6 +29,12 @@ export function lessonMs(dateIso, hhmm) {
   return Date.UTC(y, m - 1, d, hh, mm) - TZ_OFFSET_HOURS * 3600e3;
 }
 
+// "3426", "3426-А", "3426a" -> "3426А"
+export function normGroup(v) {
+  const s = String(v ?? '').toUpperCase().replace(/A/g, 'А').replace(/[\s\-–]/g, '');
+  return /^\d+$/.test(s) ? s + 'А' : s;
+}
+
 export function normName(s) {
   return String(s || '').toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я]/g, '');
 }

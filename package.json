@@ -5,7 +5,7 @@
   "scripts": {
     "fetch": "node scripts/fetch-schedule.mjs",
     "notify": "node scripts/notify.mjs",
-    "seed": "node scripts/seed.mjs",
+    "users": "node scripts/users.mjs",
     "serve": "node scripts/serve.mjs"
   },
   "dependencies": {
