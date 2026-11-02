@@ -137,12 +137,12 @@ function messagesFor(user) {
     out.push({ key: `digest:${today}`, title, text: `${title}:\n${blocks.map(line).join('\n')}`, body: blocks.map(line).join('\n'), url: appUrl });
   }
 
-  // 2. Напоминание перед каждой парой
+  // 2. Напоминание перед каждой парой. Если расписание опубликовали поздно — пока пара идёт
   for (const b of blocks) {
     const left = minutes(b.startMs - nowMs);
-    if (left > n.remindBeforeMin || left < -15) continue;
+    if (left > n.remindBeforeMin || nowMs >= b.endMs - 5 * 60000) continue;
     const room = lessonRoom(shared.teachers, b);
-    const title = `${left > 0 ? `Через ${left} мин` : 'Уже идёт'}: ${b.subject}`;
+    const title = `${left > 0 ? `Через ${left} мин` : `Уже идёт, до ${b.end}`}: ${b.subject}`;
     out.push({
       key: `pair:${today}:${b.start}`,
       title,
