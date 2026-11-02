@@ -5,8 +5,7 @@
     "path": "/2 курс/КНН.xlsx"
   },
   "notify": {
-    "smtpHost": "smtp.mail.ru",
-    "smtpPort": 465,
+    "vapidPublic": "BKhuCcZJKGziPwwAvCnnoq5iYMXvoXVvqfR98rrDz6eHGRaB7ibMmPW_b9_6S3c7UAre3Cu7q5tFkZvrmRFuNSc",
     "remindBeforeMin": 20,
     "digestAt": "07:00"
   }

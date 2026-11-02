@@ -1,8 +1,10 @@
 name: Напоминания
 
+# Основной запуск — внешний таймер (cron-job.org) раз в 5 минут дёргает workflow_dispatch:
+# собственное расписание GitHub часто опаздывает или пропускает запуски, оно тут запасное.
 on:
   schedule:
-    - cron: '*/10 3-18 * * *' # каждые 10 минут с 06:00 до 21:59 по Москве
+    - cron: '*/5 3-18 * * *' # с 06:00 до 21:59 по Москве
   workflow_dispatch:
 
 concurrency:
@@ -25,15 +27,14 @@ jobs:
       - run: node scripts/notify.mjs
         env:
           DATA_KEY: ${{ secrets.DATA_KEY }}
-          OWNER_KEY: ${{ secrets.OWNER_KEY }}
-          MAIL_USER: ${{ secrets.MAIL_USER }}
-          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          VK_TOKEN: ${{ secrets.VK_TOKEN }}
+          VAPID_PRIVATE: ${{ secrets.VAPID_PRIVATE }}
           APP_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
       - name: Запомнить отправленное
         run: |
           git config user.name "knn-bot"
           git config user.email "knn-bot@users.noreply.github.com"
-          git add state
+          git add state docs/data/links.enc.json 2>/dev/null || git add state
           git diff --cached --quiet && exit 0
           git commit -m "Отправлены напоминания"
           git pull --rebase

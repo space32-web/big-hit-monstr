@@ -15,9 +15,15 @@ const LS = {
 
 const SCHEDULE_PATH = 'data/schedule.enc.json';
 const SHARED_PATH = 'data/shared.enc.json';
+const LINKS_PATH = 'data/links.enc.json'; // привязки ВК, пишет бот рассылки
+const VAPID_PUBLIC = 'BKhuCcZJKGziPwwAvCnnoq5iYMXvoXVvqfR98rrDz6eHGRaB7ibMmPW_b9_6S3c7UAre3Cu7q5tFkZvrmRFuNSc';
 
 let pass = LS.get('pass');
-let userPath = null;     // data/users/<id>.enc.json — выводится из пароля
+let uid = null;          // id пользователя — выводится из пароля
+let userPath = null;     // data/users/<id>.enc.json
+let notifyPath = null;   // data/notify/<id>.enc.json — код привязки ВК и push-подписки
+let notify = null;       // { vkCode, push: [] }
+let links = null;        // { vk: { <id>: peer } }
 let allSchedule = null;  // расписание всех групп из профилей
 let schedule = null;     // { days } группы этого пользователя
 let store = null;        // личное: settings, homework, sharedKey
@@ -78,11 +84,17 @@ async function loadBox(path) {
 
 async function loadData() {
   loadBox.offline = false;
-  userPath = `data/users/${await userFileId(pass)}.enc.json`;
+  uid = await userFileId(pass);
+  userPath = `data/users/${uid}.enc.json`;
+  notifyPath = `data/notify/${uid}.enc.json`;
   store = await decryptJSON(await loadBox(userPath), pass);
-  const [schedBox, sharedBox] = await Promise.all([loadBox(SCHEDULE_PATH), loadBox(SHARED_PATH)]);
+  // файлов уведомлений может ещё не быть — это не ошибка
+  const optional = path => loadBox(path).then(box => decryptJSON(box, store.sharedKey)).catch(() => null);
+  const [schedBox, sharedBox, notifyData, linksData] = await Promise.all([loadBox(SCHEDULE_PATH), loadBox(SHARED_PATH), optional(notifyPath), optional(LINKS_PATH)]);
   allSchedule = await decryptJSON(schedBox, store.sharedKey);
   shared = await decryptJSON(sharedBox, store.sharedKey);
+  notify = notifyData || { push: [] };
+  links = linksData || { vk: {} };
   applyGroup();
   if (loadBox.offline) toast('Нет сети — показаны сохранённые данные');
 }
@@ -126,6 +138,7 @@ async function saveFile(path, obj, key, message) {
 
 const saveStore = message => saveFile(userPath, store, pass, message);
 const saveShared = message => saveFile(SHARED_PATH, shared, store.sharedKey, message);
+const saveNotify = message => saveFile(notifyPath, notify, store.sharedKey, message);
 
 // ---------- Время и форматирование ----------
 
@@ -201,6 +214,17 @@ document.addEventListener('click', async e => {
   if (action === 'join') {
     const b = blocksForDate(schedule, date).find(b => b.start === start);
     if (b) join(b);
+  } else if (action === 'vk-code') {
+    vkCode();
+  } else if (action === 'vk-copy') {
+    toast((await copy(notify.vkCode)) ? 'Код скопирован' : notify.vkCode);
+  } else if (action === 'push-on') {
+    pushOn();
+  } else if (action === 'push-off') {
+    pushOff();
+  } else if (action === 'push-test') {
+    const reg = await navigator.serviceWorker.ready;
+    reg.showNotification('КНН трекер', { body: 'Так будут выглядеть напоминания о парах', icon: 'icon.svg', tag: 'test' });
   } else if (action === 'copy-chat') {
     toast((await copy(chatText())) ? 'Скопировано: «' + chatText() + '»' : chatText());
   } else if (action === 'add-hw') {
@@ -342,7 +366,97 @@ function renderMore() {
   $('#profileInfo').innerHTML = `<b>${esc(store.settings.fio)}</b><br>Группа ${esc(normGroup(store.settings.group))}${store.admin ? ' · админ' : ''}`;
   const days = Object.keys(schedule.days).sort();
   $('#schedInfo').textContent = `Показана группа ${schedule.group}. Последний день в расписании: ${days.length ? dayTitle(days[days.length - 1]) : '—'}.`;
+  renderNotify();
   if (admin) admin.render();
+}
+
+// ---------- Уведомления: ВК-бот и push ----------
+
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+function renderVk() {
+  const box = $('#vkBlock');
+  if (links.vk[uid]) {
+    box.innerHTML = '<p><span class="chip ok">ВК подключён</span></p><p class="muted small">Отключить: напиши боту «стоп».</p>';
+  } else if (!shared.vkGroup) {
+    box.innerHTML = '<p class="muted small">Сообщество ВК ещё не подключено, этим занимается админ.</p>';
+  } else if (!notify.vkCode) {
+    box.innerHTML = '<button class="btn primary" data-action="vk-code">Подключить ВК</button>';
+  } else {
+    box.innerHTML = `
+      <ol class="steps">
+        <li><a class="btn" href="https://vk.me/${esc(shared.vkGroup)}" target="_blank" rel="noopener">Открыть сообщество ВК</a></li>
+        <li>Отправь туда код <b class="secret">${esc(notify.vkCode)}</b> <button class="btn small" data-action="vk-copy">Скопировать</button></li>
+        <li>Бот ответит в течение 5–10 минут, тогда здесь появится «ВК подключён».</li>
+      </ol>`;
+  }
+}
+
+async function currentSubscription() {
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+
+async function renderPush() {
+  const box = $('#pushBlock');
+  if (!pushSupported()) {
+    box.innerHTML = isIOS
+      ? '<p class="muted small">На iPhone push работает только из приложения: в Safari нажми «Поделиться» → «На экран Домой», открой трекер с иконки и включи здесь.</p>'
+      : '<p class="muted small">Этот браузер не поддерживает push-уведомления.</p>';
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    box.innerHTML = '<p class="muted small">Уведомления запрещены в настройках браузера для этого сайта. Разреши их там и обнови страницу.</p>';
+    return;
+  }
+  const sub = await currentSubscription().catch(() => null);
+  const on = sub && notify.push.some(p => p.endpoint === sub.endpoint);
+  box.innerHTML = on
+    ? `<p><span class="chip ok">Push включены на этом устройстве</span></p>
+       <div class="links"><button class="btn small" data-action="push-test">Проверить</button><button class="btn small" data-action="push-off">Отключить</button></div>`
+    : '<button class="btn primary" data-action="push-on">Включить push на этом устройстве</button>';
+}
+
+function renderNotify() {
+  renderVk();
+  renderPush();
+}
+
+function b64urlToBytes(s) {
+  const raw = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (s.length % 4)) % 4));
+  return Uint8Array.from(raw, c => c.charCodeAt(0));
+}
+
+async function pushOn() {
+  if ((await Notification.requestPermission()) !== 'granted') return renderPush();
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = (await reg.pushManager.getSubscription()) || (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(VAPID_PUBLIC) }));
+    const json = sub.toJSON();
+    notify.push = notify.push.filter(p => p.endpoint !== json.endpoint);
+    notify.push.push({ endpoint: json.endpoint, keys: json.keys, device: navigator.userAgent.slice(0, 120), at: new Date().toISOString() });
+    if (await saveNotify('Push: новое устройство')) toast('Push включены');
+  } catch (e) {
+    toast('Не получилось включить push: ' + e.message);
+  }
+  renderPush();
+}
+
+async function pushOff() {
+  const sub = await currentSubscription().catch(() => null);
+  if (sub) {
+    notify.push = notify.push.filter(p => p.endpoint !== sub.endpoint);
+    await sub.unsubscribe().catch(() => {});
+    await saveNotify('Push: устройство отключено');
+  }
+  renderPush();
+}
+
+async function vkCode() {
+  notify.vkCode = String(crypto.getRandomValues(new Uint32Array(1))[0] % 900000 + 100000);
+  if (!(await saveNotify('ВК: код привязки'))) notify.vkCode = undefined;
+  renderVk();
 }
 
 function renderClock(now) {
@@ -402,7 +516,7 @@ $('#hwForm').addEventListener('submit', async e => {
 
 $('#logoutBtn').onclick = () => {
   if (!confirm('Удалить пароль и токен с этого устройства?')) return;
-  ['pass', 'token', 'cache:' + SCHEDULE_PATH, 'cache:' + SHARED_PATH, 'cache:' + userPath].forEach(LS.del);
+  ['pass', 'token', 'cache:' + SCHEDULE_PATH, 'cache:' + SHARED_PATH, 'cache:' + LINKS_PATH, 'cache:' + userPath, 'cache:' + notifyPath].forEach(LS.del);
   location.reload();
 };
 
@@ -432,7 +546,8 @@ async function start() {
       get shared() { return shared; },
       get store() { return store; },
       get allSchedule() { return allSchedule; },
-      LS, toast, esc, repo, canWrite, ghHeaders, saveFile, saveShared, dayTitle,
+      get links() { return links; },
+      LS, toast, esc, repo, canWrite, ghHeaders, saveFile, saveShared, saveStore, dayTitle,
       refresh() { applyGroup(); renderAll(); },
     });
   }

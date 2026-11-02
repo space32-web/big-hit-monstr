@@ -1,9 +1,10 @@
 // Админка: расписание со скрина (распознавание Tesseract), ссылки преподавателей, пользователи.
-import { userFileId } from './crypto.js';
+import { decryptJSON, userFileId } from './crypto.js';
 import { DEFAULT_SLOTS, bestMatch, normGroup, normName, todayISO } from './lessons.js';
 
 const $ = sel => document.querySelector(sel);
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const AI_TIMEOUT_MS = 180000;
 
 let ctx;
 let rows = [];      // по слоту: { subject, teacher, room, roomAuto, raw }
@@ -207,10 +208,52 @@ function cleanText(text) {
   return (s.match(/[A-Za-zА-Яа-яЁё]/g) || []).length >= 2 ? s.replace(/^[^\wА-Яа-яЁё]+|[^\wА-Яа-яЁё.)]+$/g, '') : '';
 }
 
-async function recognize(file) {
-  const img = await loadImage(file);
-  $('#aPreview').src = img.src;
-  $('#aPreview').hidden = false;
+// Картинка в JPEG не шире 1400 px — модели хватает, а запрос дешевле и коммит меньше
+function imageDataURL(img) {
+  const scale = Math.min(1, 1400 / img.naturalWidth);
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.naturalWidth * scale);
+  c.height = Math.round(img.naturalHeight * scale);
+  const g = c.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85);
+}
+
+// ИИ (Perplexity) вызывается из GitHub Actions: из браузера его API недоступен.
+// Кладём скрин в data/inbox/request.enc.json и ждём data/inbox/result.enc.json с тем же id.
+async function recognizeAI(img) {
+  if (!ctx.canWrite()) throw new Error('нужен токен GitHub');
+  const n = slots().length;
+  const prompt =
+    `На картинке — расписание одной учебной группы на один день: ячейки сверху вниз. ` +
+    `Сначала шапка с номером группы (например 3427А), дальше на каждую пару по две ячейки: название предмета, под ним фамилия преподавателя. ` +
+    `Пустая ячейка предмета значит, что этой пары нет — верни для неё пустые строки, порядок пар не сдвигай. Пар не больше ${n}. ` +
+    `Переписывай текст точно как на картинке, ничего не выдумывай. ` +
+    `Для справки, известные предметы: ${knownSubjects().join('; ')}. Известные преподаватели: ${shared().teachers.map(t => surname(t.name)).join(', ')}.`;
+  const id = crypto.randomUUID();
+  if (!(await ctx.saveFile('data/inbox/request.enc.json', { id, prompt, image: imageDataURL(img) }, ctx.store.sharedKey, 'Скрин на распознавание'))) {
+    throw new Error('скрин не отправился');
+  }
+  const url = `https://api.github.com/repos/${ctx.repo()}/contents/docs/data/inbox/result.enc.json`;
+  const started = Date.now();
+  while (Date.now() - started < AI_TIMEOUT_MS) {
+    await new Promise(r => setTimeout(r, 4000));
+    status(`ИИ распознаёт скрин на GitHub… ${Math.round((Date.now() - started) / 1000)} с (обычно 30–60 с)`);
+    const res = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: ctx.ghHeaders() }).catch(() => null);
+    if (!res?.ok) continue;
+    const box = JSON.parse(atob((await res.json()).content.replace(/\n/g, '')));
+    const result = await decryptJSON(box, ctx.store.sharedKey);
+    if (result.id !== id) continue;
+    if (!result.ok) throw new Error(result.error);
+    const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+    return { group: clean(result.group), pairs: (result.pairs || []).map(p => ({ subject: clean(p.subject), teacher: clean(p.teacher) })) };
+  }
+  throw new Error('нет ответа за 3 минуты');
+}
+
+async function recognizeOCR(img) {
   const worker = await getWorker();
   const { canvas, cells, w } = findCells(img);
   let pairs;
@@ -242,6 +285,27 @@ async function recognize(file) {
       else pairs.push({ subject: text, teacher: '' });
     }
   }
+  return pairs;
+}
+
+async function recognize(file) {
+  const img = await loadImage(file);
+  $('#aPreview').src = img.src;
+  $('#aPreview').hidden = false;
+  let pairs, how = '';
+  if (ctx.LS.get('aiOff') !== '1') {
+    try {
+      status('Отправляю скрин ИИ…');
+      const ai = await recognizeAI(img);
+      pairs = ai.pairs;
+      how = ' (ИИ)';
+      if (ai.group && normGroup(ai.group) !== currentGroup()) how += ` На скрине группа ${ai.group}, а выбрана ${currentGroup()} — проверь.`;
+    } catch (e) {
+      how = ` (без ИИ: ${e.message})`;
+      status(`ИИ не справился: ${e.message}. Пробую обычное распознавание…`);
+    }
+  }
+  pairs ??= await recognizeOCR(img);
 
   rows = emptyRows();
   pairs.slice(0, rows.length).forEach((p, i) => {
@@ -253,7 +317,7 @@ async function recognize(file) {
     autoRoom(row);
   });
   const found = rows.filter(r => r.subject).length;
-  status(`Готово: распознано пар — ${found}. Проверь и поправь, потом «Опубликовать».` +
+  status(`Готово${how}: распознано пар — ${found}. Проверь и поправь, потом «Опубликовать».` +
     (pairs.length > rows.length ? ` На скрине больше строк, чем пар в расписании (${rows.length}) — лишние отброшены.` : ''));
   const existing = shared().days?.[currentGroup()]?.[$('#aDate').value];
   if (existing) status($('#aStatus').textContent + ' На эту дату уже есть расписание — публикация его заменит.');
@@ -324,7 +388,7 @@ function renderUsers() {
   const users = shared().users || [];
   $('#aUsers').innerHTML = users.length
     ? users.map((u, i) => `
-        <div class="row-item"><span>${esc(u.fio)} · ${esc(u.group)}${u.admin ? ' · админ' : ''}</span>
+        <div class="row-item"><span>${esc(u.fio)} · ${esc(u.group)}${u.admin ? ' · админ' : ''}${ctx.links.vk[u.id] ? ' · ВК ✓' : ''}</span>
           ${u.admin ? '' : `<span class="acts"><button class="btn small danger" type="button" data-a="del-user" data-i="${i}">Удалить</button></span>`}</div>`).join('')
     : '<div class="empty">Нет пользователей</div>';
 }
@@ -341,6 +405,8 @@ function render() {
   warn.textContent = 'Добавь токен GitHub в самом низу — без него нельзя публиковать.';
   $('#writeStatus').textContent = ctx.canWrite() ? '✓ Запись включена для всех' : 'Токена нет — сохранять нельзя';
   $('#writeStatus').className = 'small ' + (ctx.canWrite() ? '' : 'error');
+  $('#aiToggle').checked = ctx.LS.get('aiOff') !== '1';
+  if (document.activeElement !== $('#vkGroupInput')) $('#vkGroupInput').value = shared().vkGroup || '';
   renderRows();
   renderDays();
   renderTeachers();
@@ -540,6 +606,18 @@ function bind() {
     ctx.LS.set('adminGroup', normGroup($('#aView').value));
     ctx.refresh();
     ctx.toast('Показываю группу ' + normGroup($('#aView').value));
+  };
+
+  $('#saveAi').onclick = async () => {
+    // адрес сообщества: принимаем и ссылку целиком (vk.com/knn_bot, vk.me/knn_bot)
+    const group = $('#vkGroupInput').value.trim().replace(/^https?:\/\//, '').replace(/^(m\.)?(vk\.com|vk\.me)\//, '').replace(/[/?#].*$/, '');
+    ctx.LS.set('aiOff', $('#aiToggle').checked ? '0' : '1');
+    if (group !== (shared().vkGroup || '')) {
+      shared().vkGroup = group || undefined;
+      await ctx.saveShared('Сообщество ВК');
+    }
+    ctx.toast('Сохранено');
+    render();
   };
 
   $('#saveToken').onclick = async () => {

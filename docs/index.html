@@ -80,6 +80,14 @@
           </div>
         </div>
         <div class="card">
+          <h2>Уведомления</h2>
+          <p class="muted small">Утром — пары на день, за 20 минут до пары — ссылка на вход, после пар — напоминание проверить ДЗ в MAX. Лучше включить оба способа.</p>
+          <h3>Бот ВКонтакте</h3>
+          <div id="vkBlock"></div>
+          <h3>Push на это устройство</h3>
+          <div id="pushBlock"></div>
+        </div>
+        <div class="card">
           <h2>Профиль</h2>
           <p id="profileInfo"></p>
           <p class="muted small">ФИО, группу и ссылки на пары настраивает админ.</p>
@@ -153,6 +161,14 @@
           <h2>Смотреть расписание группы</h2>
           <label>Группа на вкладках «Сегодня» и «Неделя»<input id="aView" list="aGroups"></label>
           <button id="aSaveView" class="btn" type="button">Показать</button>
+        </div>
+
+        <div class="card form">
+          <h2>ИИ и рассылка</h2>
+          <label class="check"><input id="aiToggle" type="checkbox"> Распознавать скрины через ИИ (Perplexity)</label>
+          <p class="muted small">Скрин уходит в GitHub Actions, ответ приходит через 30–60 секунд. Ключ хранится секретом <code>PPLX_KEY</code> в GitHub. Если ИИ не ответит, сработает обычное распознавание.</p>
+          <label>Сообщество ВК для рассылки (адрес, например club123456 или knn_bot)<input id="vkGroupInput" autocomplete="off"></label>
+          <button id="saveAi" class="btn" type="button">Сохранить</button>
         </div>
 
         <div class="card form">

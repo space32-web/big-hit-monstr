@@ -1,5 +1,5 @@
 // Офлайн-кэш оболочки приложения. Данные (data/*) всегда берутся из сети.
-const CACHE = 'knn-v4';
+const CACHE = 'knn-v5';
 const SHELL = ['./', 'index.html', 'style.css', 'js/app.js', 'js/admin.js', 'js/crypto.js', 'js/lessons.js', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', e => {
@@ -25,4 +25,16 @@ self.addEventListener('fetch', e => {
       })
       .catch(() => caches.match(e.request))
   );
+});
+
+// Напоминания от бота рассылки: { title, body, url, tag }
+self.addEventListener('push', e => {
+  const m = e.data ? e.data.json() : { title: 'КНН трекер' };
+  e.waitUntil(self.registration.showNotification(m.title, { body: m.body, icon: 'icon.svg', badge: 'icon.svg', tag: m.tag, data: { url: m.url } }));
+});
+
+// Нажатие — открыть комнату пары или трекер
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(clients.openWindow(e.notification.data?.url || './'));
 });

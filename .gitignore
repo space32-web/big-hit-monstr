@@ -5,3 +5,7 @@ node_modules/
 seed/
 secrets.local.txt
 .debug/
+
+keys/
+1C/
+*.lnk

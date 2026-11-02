@@ -1,0 +1,36 @@
+name: Распознавание скрина
+
+# Админка кладёт скрин в data/inbox/request.enc.json — сразу отвечаем результатом
+on:
+  push:
+    paths: ['docs/data/inbox/request.enc.json']
+  workflow_dispatch:
+
+concurrency:
+  group: repo-write
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  recognize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/ai-recognize.mjs
+        env:
+          DATA_KEY: ${{ secrets.DATA_KEY }}
+          PPLX_KEY: ${{ secrets.PPLX_KEY }}
+      - name: Сохранить результат
+        run: |
+          git config user.name "knn-bot"
+          git config user.email "knn-bot@users.noreply.github.com"
+          git add -A docs/data/inbox
+          git diff --cached --quiet && exit 0
+          git commit -m "Распознан скрин расписания"
+          git pull --rebase
+          git push
