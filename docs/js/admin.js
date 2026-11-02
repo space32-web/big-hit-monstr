@@ -613,8 +613,10 @@ function bind() {
     const group = $('#vkGroupInput').value.trim().replace(/^https?:\/\//, '').replace(/^(m\.)?(vk\.com|vk\.me)\//, '').replace(/[/?#].*$/, '');
     ctx.LS.set('aiOff', $('#aiToggle').checked ? '0' : '1');
     if (group !== (shared().vkGroup || '')) {
+      const prev = shared().vkGroup;
       shared().vkGroup = group || undefined;
-      await ctx.saveShared('Сообщество ВК');
+      // при ошибке saveShared сам показывает причину — не перебиваем её
+      if (!(await ctx.saveShared('Сообщество ВК'))) return (shared().vkGroup = prev), render();
     }
     ctx.toast('Сохранено');
     render();
