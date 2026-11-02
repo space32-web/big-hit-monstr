@@ -161,3 +161,8 @@ h3 { font-size: 15px; margin: 14px 0 6px; }
 .steps .secret { font-size: 16px; }
 .check { display: flex !important; gap: 8px; align-items: center; }
 .check input { width: auto; }
+
+/* Полоска хода пары */
+.progress { height: 4px; border-radius: 2px; background: var(--border); margin-top: 14px; overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--accent); }
+.hero .actions + .actions { margin-top: 8px; }

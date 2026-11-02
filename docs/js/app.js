@@ -197,12 +197,25 @@ function roomFor(block) {
 const joinName = () => `${store.settings.fio} ${store.settings.group}`;
 const chatText = () => `${store.settings.fio}, я на паре`;
 
+// Компьютер — широкий экран с мышью: там пару удобно держать отдельным окном рядом с трекером
+const isDesktop = () => matchMedia('(pointer: fine)').matches && screen.availWidth >= 1100;
+
+// Встроить ВКС в трекер нельзя (X-Frame-Options: SAMEORIGIN), поэтому на компьютере —
+// окно в левых 2/3 экрана, трекер остаётся справа. Одно и то же окно для повторного входа.
+function openRoom(room) {
+  if (!isDesktop()) return window.open(room, '_blank');
+  const w = Math.round(screen.availWidth * 0.66), h = screen.availHeight;
+  return window.open(room, 'knn-room', `popup,width=${w},height=${h},left=${screen.availLeft ?? 0},top=${screen.availTop ?? 0}`);
+}
+
 async function join(block) {
   const room = roomFor(block);
   if (!room) return toast('Ссылки на эту пару пока нет — её добавит админ');
   const copied = copy(joinName()); // копируем, пока действует клик пользователя
-  const win = window.open(room, '_blank');
+  const win = openRoom(room);
   if (win) win.opener = null;
+  LS.set('joined', `${block.date} ${block.start}`);
+  renderHero(Date.now());
   toast((await copied) ? 'Имя скопировано — вставь его в поле «Имя»' : `Имя для входа: ${joinName()}`);
   if (!win) setTimeout(() => (location.href = room), 1500);
 }
@@ -225,6 +238,8 @@ document.addEventListener('click', async e => {
   } else if (action === 'push-test') {
     const reg = await navigator.serviceWorker.ready;
     reg.showNotification('КНН трекер', { body: 'Так будут выглядеть напоминания о парах', icon: 'icon.svg', tag: 'test' });
+  } else if (action === 'copy-name') {
+    toast((await copy(joinName())) ? 'Скопировано: «' + joinName() + '»' : joinName());
   } else if (action === 'copy-chat') {
     toast((await copy(chatText())) ? 'Скопировано: «' + chatText() + '»' : chatText());
   } else if (action === 'add-hw') {
@@ -299,6 +314,7 @@ function renderHero(now) {
   }
   const live = next.startMs <= now;
   const room = roomFor(next);
+  const joined = LS.get('joined') === `${next.date} ${next.start}`;
   hero.innerHTML = `
     <div class="state">${live ? 'Идёт пара' : 'Следующая пара'}</div>
     <div class="subject">${esc(next.subject)}</div>
@@ -308,10 +324,16 @@ function renderHero(now) {
       <div class="muted small">${esc(teacherNames(next))}</div></div>
     <div class="actions">
       ${room
-        ? `<button class="btn primary" data-action="join" data-date="${next.date}" data-start="${next.start}">Войти на пару</button>`
+        ? `<button class="btn primary" data-action="join" data-date="${next.date}" data-start="${next.start}">${joined ? 'Открыть комнату снова' : 'Войти на пару'}</button>`
         : '<span class="chip">Ссылки на эту пару пока нет</span>'}
       <button class="btn" data-action="copy-chat">Скопировать «я на паре»</button>
-    </div>`;
+    </div>
+    ${live || joined ? `
+    <div class="actions">
+      <button class="btn small" data-action="copy-name">Скопировать имя для входа</button>
+      <button class="btn small" data-action="add-hw" data-subject="${esc(next.subject)}">+ ДЗ по предмету</button>
+    </div>
+    ${live ? `<div class="progress"><span style="width:${Math.min(100, ((now - next.startMs) / (next.endMs - next.startMs)) * 100).toFixed(1)}%"></span></div>` : ''}` : ''}`;
 }
 
 function hwItem(h) {
