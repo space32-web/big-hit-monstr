@@ -56,8 +56,17 @@ async function fetchBox(path) {
     } catch {}
   }
   const res = await fetch(`${path}?t=${Date.now()}`, { cache: 'no-store' });
-  if (!res.ok) throw Object.assign(new Error(`${path}: ${res.status}`), { status: res.status });
-  return { box: await res.json(), sha: null };
+  if (res.ok) return { box: await res.json(), sha: null };
+  // Pages публикует новые файлы с задержкой в минуту-две: только что созданный аккаунт
+  // или новый пароль берём прямо из репозитория (он открытый, токен не нужен)
+  if (res.status === 404 && repo()) {
+    const api = await fetch(`https://api.github.com/repos/${repo()}/contents/docs/${path}?ref=main&t=${Date.now()}`).catch(() => null);
+    if (api?.ok) {
+      const j = await api.json();
+      return { box: JSON.parse(atob(j.content.replace(/\n/g, ''))), sha: j.sha };
+    }
+  }
+  throw Object.assign(new Error(`${path}: ${res.status}`), { status: res.status });
 }
 
 // Файл из сети, а без сети — последняя сохранённая копия
@@ -87,6 +96,11 @@ export async function loadData() {
   const [schedBox, sharedBox, notify, links] = await Promise.all([loadBox(SCHEDULE_PATH), loadBox(SHARED_PATH), optional(S.notifyPath), optional(LINKS_PATH)]);
   S.allSchedule = await decryptJSON(schedBox, key);
   S.shared = await decryptJSON(sharedBox, key);
+  // токен лежит в shared: первый раз читали со статики Pages, она отстаёт на минуту-две —
+  // теперь, с токеном, перечитываем общее свежим из репозитория
+  if (!shas[SHARED_PATH] && canWrite()) {
+    try { S.shared = await decryptJSON(await loadBox(SHARED_PATH), key); } catch {}
+  }
   S.notify = notify || { push: [] };
   S.links = links || { vk: {} };
   if (S.store.admin) S.requests = (await optional(REQUESTS_PATH)) || { items: [] };
