@@ -9,6 +9,7 @@ export const SHARED_FILE = join(ROOT, 'docs', 'data', 'shared.enc.json');
 export const USERS_DIR = join(ROOT, 'docs', 'data', 'users');
 export const NOTIFY_DIR = join(ROOT, 'docs', 'data', 'notify');
 export const LINKS_FILE = join(ROOT, 'docs', 'data', 'links.enc.json');
+export const REQUESTS_FILE = join(ROOT, 'docs', 'data', 'requests.enc.json');
 export const STATE_DIR = join(ROOT, 'state');
 
 export function readJSON(path, fallback) {

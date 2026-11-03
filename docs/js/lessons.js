@@ -145,3 +145,17 @@ export function plural(n, one, few, many) {
 export function hwOpen(store) {
   return ((store && store.homework) || []).filter(h => !h.done).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999'));
 }
+
+// Логин из ФИО: две буквы имени + фамилия латиницей. «Григорьев Егор Николаевич» -> EgGrigorev
+const TRANSLIT = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n',
+  о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '',
+  э: 'e', ю: 'yu', я: 'ya',
+};
+const latin = s => [...String(s).toLowerCase()].map(c => TRANSLIT[c] ?? (/[a-z0-9]/.test(c) ? c : '')).join('');
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+export function makeLogin(fio) {
+  const [surname = '', name = ''] = String(fio).trim().split(/\s+/);
+  return cap(latin(name).slice(0, 2)) + cap(latin(surname));
+}

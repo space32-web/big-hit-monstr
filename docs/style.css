@@ -356,3 +356,56 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .7; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .day-head.free { margin: 10px 4px; font-weight: 700; color: var(--muted); }
+
+/* ---------- Экран входа ---------- */
+.login { max-width: 960px; margin: 0 auto; min-height: 100vh; padding: 32px 20px; display: grid; gap: 28px; align-content: center; grid-template-columns: 1fr; text-align: left; }
+.login-brand { text-align: center; }
+.login-brand .logo { margin: 0 auto; }
+.login-brand h1 { font-size: 34px; margin-top: 18px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.perks { list-style: none; padding: 0; margin: 18px auto 0; display: grid; gap: 10px; max-width: 320px; text-align: left; }
+.perks li { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); font-weight: 600; font-size: 14px; }
+.perks .ic { color: var(--accent); }
+.auth { width: 100%; max-width: 420px; margin: 0 auto; padding: 26px; border-radius: 26px; box-shadow: var(--shadow); animation: rise .3s ease both; }
+.auth h2.in-card { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+.field { position: relative; display: block !important; }
+.field > .ic { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.field input { padding-left: 44px; min-height: 50px; }
+.field:focus-within > .ic { color: var(--accent); }
+.eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 38px; height: 38px; border: none; border-radius: 10px; background: none; color: var(--muted); cursor: pointer; }
+.eye.on { color: var(--accent); }
+.field:has(.eye) input { padding-right: 48px; }
+.switch { margin: 4px 0 0; text-align: center; font-size: 14px; color: var(--muted); }
+.link { border: none; background: none; padding: 0; color: var(--accent); font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.req-done { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius-sm); background: var(--ok-soft); }
+.req-done p { margin: 0; }
+.code.wide { display: block; margin: 0; letter-spacing: 0; font-size: 14px; user-select: all; cursor: text; }
+@media (min-width: 860px) {
+  .login { grid-template-columns: 1.1fr 1fr; gap: 48px; }
+  .login-brand { text-align: left; }
+  .login-brand .logo { margin: 0; }
+  .login-brand h1 { font-size: 44px; }
+  .perks { margin-left: 0; }
+}
+
+/* ---------- Окно подтверждения ---------- */
+.modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(5, 3, 12, .55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade .15s ease both; }
+.modal-card { width: min(380px, 100%); padding: 22px; border-radius: 22px; background: var(--surface-solid); border: 1px solid var(--border); box-shadow: var(--shadow); animation: rise .2s ease both; }
+.modal-card p { margin: 0 0 16px; font-weight: 600; font-size: 16px; }
+.modal-card .links .btn { flex: 1; }
+@keyframes fade { from { opacity: 0; } }
+
+/* ---------- Панели админки ---------- */
+.panel-tools { display: flex; justify-content: flex-end; gap: 6px; margin: 4px 0 10px; }
+.panel { padding: 0; }
+.panel > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; cursor: pointer; list-style: none; font-weight: 800; }
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary .ph { display: flex; align-items: center; gap: 10px; }
+.panel > summary .ph .ic { color: var(--accent); }
+.panel > summary > .ic { color: var(--muted); transition: transform .2s; }
+.panel[open] > summary > .ic { transform: rotate(90deg); }
+.panel > summary:hover { background: var(--surface-hi); border-radius: var(--radius); }
+.panel[open] > summary:hover { border-radius: var(--radius) var(--radius) 0 0; }
+.panel-body { padding: 0 18px 18px; animation: fade .2s ease both; }
+.user-row > span:first-child { display: grid; gap: 4px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.user-row .acts { flex-wrap: wrap; justify-content: flex-end; }

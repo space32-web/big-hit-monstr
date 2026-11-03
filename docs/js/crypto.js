@@ -27,9 +27,9 @@ async function deriveKey(password, salt) {
   );
 }
 
-// Имя файла пользователя выводится из его пароля — логин вводить не нужно
-export async function userFileId(password) {
-  const hash = await crypto.subtle.digest('SHA-256', enc.encode('knn-user:' + password));
+// Имя файла пользователя выводится из логина и пароля: без обоих файл не найти
+export async function userFileId(login, password) {
+  const hash = await crypto.subtle.digest('SHA-256', enc.encode(`knn-user:${String(login).trim().toLowerCase()}:${password}`));
   return [...new Uint8Array(hash).slice(0, 8)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 

@@ -7,8 +7,11 @@ import { LS, toast } from './util.js';
 export const SCHEDULE_PATH = 'data/schedule.enc.json';
 export const SHARED_PATH = 'data/shared.enc.json';
 export const LINKS_PATH = 'data/links.enc.json'; // привязки ВК, пишет бот рассылки
+export const REQUESTS_PATH = 'data/requests.enc.json'; // заявки на аккаунт из ВК, пишет бот, разбирает админ
+export const PUBLIC_PATH = 'data/public.json'; // открыто, нужно до входа: адрес сообщества ВК
 
 export const S = {
+  login: LS.get('login'),
   pass: LS.get('pass'),
   uid: null,          // id пользователя — выводится из пароля
   userPath: null,     // data/users/<id>.enc.json
@@ -19,6 +22,7 @@ export const S = {
   schedule: null,     // { group, days } просматриваемой группы
   notify: null,       // { vkCode, push: [] }
   links: null,        // { vk: { <id>: peer } }
+  requests: null,     // { items: [...] } — только у админа
   offline: false,
 };
 const shas = {}; // sha файлов в репозитории для обновления через API
@@ -73,7 +77,7 @@ async function loadBox(path) {
 
 export async function loadData() {
   S.offline = false;
-  S.uid = await userFileId(S.pass);
+  S.uid = await userFileId(S.login, S.pass);
   S.userPath = `data/users/${S.uid}.enc.json`;
   S.notifyPath = `data/notify/${S.uid}.enc.json`;
   S.store = await decryptJSON(await loadBox(S.userPath), S.pass);
@@ -85,6 +89,7 @@ export async function loadData() {
   S.shared = await decryptJSON(sharedBox, key);
   S.notify = notify || { push: [] };
   S.links = links || { vk: {} };
+  if (S.store.admin) S.requests = (await optional(REQUESTS_PATH)) || { items: [] };
   applyGroup();
 }
 
@@ -98,12 +103,13 @@ export function applyGroup() {
   S.schedule = { ...S.allSchedule, group, days: groupDays(S.allSchedule, S.shared, group) };
 }
 
+// key = null — файл пишется открытым (public.json)
 export async function saveFile(path, obj, key, message) {
   if (!canWrite()) {
     toast('Сохранение недоступно: нет доступа к GitHub');
     return false;
   }
-  const box = await encryptJSON(obj, key);
+  const box = key === null ? obj : await encryptJSON(obj, key);
   const url = `https://api.github.com/repos/${repo()}/contents/docs/${path}`;
   for (let attempt = 0; attempt < 2; attempt++) {
     if (!shas[path]) {
@@ -125,10 +131,48 @@ export async function saveFile(path, obj, key, message) {
   return false;
 }
 
+export async function deleteFile(path, message) {
+  const url = `https://api.github.com/repos/${repo()}/contents/docs/${path}`;
+  const cur = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: ghHeaders() });
+  if (cur.status === 404) return true;
+  if (!cur.ok) return false;
+  const { sha } = await cur.json();
+  const res = await fetch(url, { method: 'DELETE', headers: ghHeaders(), body: JSON.stringify({ message, sha, branch: 'main' }) });
+  delete shas[path];
+  LS.del('cache:' + path);
+  return res.ok;
+}
+
+// Свежая версия файла с сервера — перед правкой файлов, которые пишет и бот (заявки, привязки ВК)
+export async function reload(path, fallback) {
+  try {
+    return await decryptJSON(await loadBox(path), S.store.sharedKey);
+  } catch {
+    return fallback;
+  }
+}
+
 export const saveStore = message => saveFile(S.userPath, S.store, S.pass, message);
 export const saveShared = message => saveFile(SHARED_PATH, S.shared, S.store.sharedKey, message);
 export const saveNotify = message => saveFile(S.notifyPath, S.notify, S.store.sharedKey, message);
+export const saveLinks = message => saveFile(LINKS_PATH, S.links, S.store.sharedKey, message);
+export const saveRequests = message => saveFile(REQUESTS_PATH, S.requests, S.store.sharedKey, message);
+
+// Переносит файлы пользователя под новый id (новый пароль): уведомления и привязку ВК
+export async function moveUserData(oldId, newId, sharedKey) {
+  const notify = await reload(`data/notify/${oldId}.enc.json`, null);
+  if (notify) {
+    await saveFile(`data/notify/${newId}.enc.json`, notify, sharedKey, 'Уведомления: новый пароль');
+    await deleteFile(`data/notify/${oldId}.enc.json`, 'Уведомления: старый пароль');
+  }
+  S.links = await reload(LINKS_PATH, S.links);
+  if (S.links.vk[oldId]) {
+    S.links.vk[newId] = S.links.vk[oldId];
+    delete S.links.vk[oldId];
+    await saveLinks('ВК: новый пароль');
+  }
+}
 
 export function forget() {
-  ['pass', 'token', 'joined', 'cache:' + SCHEDULE_PATH, 'cache:' + SHARED_PATH, 'cache:' + LINKS_PATH, 'cache:' + S.userPath, 'cache:' + S.notifyPath].forEach(LS.del);
+  ['login', 'pass', 'token', 'joined', 'cache:' + SCHEDULE_PATH, 'cache:' + SHARED_PATH, 'cache:' + LINKS_PATH, 'cache:' + S.userPath, 'cache:' + S.notifyPath].forEach(LS.del);
 }

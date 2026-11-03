@@ -1,8 +1,12 @@
 // Запуск приложения, вход, вкладки, кнопки и формы. Данные — data.js, экраны — views.js.
-import { S, applyGroup, canWrite, forget, ghHeaders, loadData, repo, saveFile, saveShared, saveStore } from './data.js';
-import { addDays, blocksForDate, nextSubjectDate, todayISO } from './lessons.js';
+import { userFileId } from './crypto.js';
+import {
+  PUBLIC_PATH, SHARED_PATH, S, applyGroup, canWrite, deleteFile, forget, ghHeaders, loadData, moveUserData, reload, repo,
+  saveFile, saveLinks, saveRequests, saveShared, saveStore,
+} from './data.js';
+import { addDays, blocksForDate, makeLogin, nextSubjectDate, normGroup, todayISO } from './lessons.js';
 import { notifyActions } from './notify.js';
-import { $, LS, copy, dayTitle, esc, icon, mondayOf, toast } from './util.js';
+import { $, LS, ask, copy, dayTitle, esc, icon, mondayOf, toast } from './util.js';
 import { chatText, joinName, renderAll, renderHero, renderLive, renderWeekOnly, roomFor, view } from './views.js';
 
 // Иконки в разметке: <i data-ic="home"></i>
@@ -50,7 +54,7 @@ const actions = {
     $('#hwText').focus();
   },
   'hw-del': async ({ id }) => {
-    if (!confirm('Удалить задание?')) return;
+    if (!(await ask('Удалить задание?', { ok: 'Удалить', danger: true }))) return;
     const prev = S.store.homework;
     S.store.homework = prev.filter(h => h.id !== id);
     renderAll();
@@ -113,8 +117,8 @@ $('#hwForm').addEventListener('submit', async e => {
   }
 });
 
-$('#logoutBtn').onclick = () => {
-  if (!confirm('Выйти и удалить данные трекера с этого устройства?')) return;
+$('#logoutBtn').onclick = async () => {
+  if (!(await ask('Выйти и удалить данные трекера с этого устройства?', { ok: 'Выйти', danger: true }))) return;
   forget();
   location.reload();
 };
@@ -131,10 +135,10 @@ async function start() {
   try {
     await loadData();
   } catch (e) {
-    if (e.status === 404 || e.name === 'OperationError') { // файла под этот пароль нет — пароль неверный
+    if (e.status === 404 || e.name === 'OperationError') { // файла под этот логин и пароль нет
       LS.del('pass');
       S.pass = null;
-      return showLogin('Неверный пароль');
+      return showLogin('Неверный логин или пароль');
     }
     return showLogin('Не удалось загрузить данные: ' + e.message);
   }
@@ -149,7 +153,10 @@ async function start() {
       get store() { return S.store; },
       get allSchedule() { return S.allSchedule; },
       get links() { return S.links; },
-      LS, toast, esc, repo, canWrite, ghHeaders, saveFile, saveShared, saveStore, dayTitle,
+      get uid() { return S.uid; },
+      get requests() { return S.requests; },
+      set requests(v) { S.requests = v; },
+      LS, toast, esc, ask, repo, canWrite, ghHeaders, saveFile, saveShared, saveStore, saveLinks, saveRequests, deleteFile, reload, dayTitle,
       refresh() { applyGroup(); renderAll(); },
     });
   }
@@ -170,18 +177,101 @@ async function silentRefresh() {
   } catch {}
 }
 
+// ---------- Вход и заявка на аккаунт ----------
+
 function showLogin(err) {
   $('#app').hidden = true;
   $('#login').hidden = false;
   $('#loginErr').hidden = !err;
   $('#loginErr').textContent = err || '';
+  $('#loginBtn').disabled = false;
+  if (S.login) $('#loginName').value = S.login;
 }
 
 $('#loginForm').addEventListener('submit', e => {
   e.preventDefault();
+  S.login = $('#loginName').value.trim();
   S.pass = $('#loginPass').value;
+  LS.set('login', S.login);
   LS.set('pass', S.pass);
+  $('#loginBtn').disabled = true;
+  $('#loginErr').hidden = true;
   start();
+});
+
+document.addEventListener('click', e => {
+  const auth = e.target.closest('[data-auth]');
+  if (auth) {
+    $('#loginForm').hidden = auth.dataset.auth !== 'login';
+    $('#requestForm').hidden = auth.dataset.auth !== 'request';
+  }
+  const eye = e.target.closest('[data-eye]');
+  if (eye) {
+    const input = document.getElementById(eye.dataset.eye);
+    input.type = input.type === 'password' ? 'text' : 'password';
+    eye.classList.toggle('on', input.type === 'text');
+  }
+});
+
+$('#reqFio').addEventListener('input', () => {
+  const fio = $('#reqFio').value.trim();
+  const ok = fio.split(/\s+/).length >= 2;
+  $('#reqLogin').hidden = !ok;
+  $('#reqLogin').innerHTML = ok ? `Твой логин будет: <b>${esc(makeLogin(fio))}</b>` : '';
+});
+
+// Сайт до входа ничего записать не может, поэтому заявка уходит сообщением боту ВК:
+// он запишет её для админа и потом пришлёт логин и пароль в этот же чат
+$('#requestForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const fio = $('#reqFio').value.trim().replace(/\s+/g, ' ');
+  const group = normGroup($('#reqGroup').value);
+  const text = `Заявка: ${fio}, ${group}`;
+  const win = window.open('about:blank', '_blank'); // открываем сразу, пока действует клик
+  const copied = await copy(text);
+  const pub = await fetch(`${PUBLIC_PATH}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({}));
+  if (!pub.vkGroup) {
+    win?.close();
+    return toast('Бот ВК ещё не подключён — напиши админу напрямую');
+  }
+  const url = `https://vk.me/${pub.vkGroup}`;
+  if (win) win.location = url;
+  $('#reqDone').hidden = false;
+  $('#reqDone').innerHTML = `
+    <p>${copied ? 'Текст заявки скопирован.' : 'Скопируй текст заявки:'} Вставь его в открывшийся чат ВК и отправь:</p>
+    <div class="code wide">${esc(text)}</div>
+    <a class="btn" href="${url}" target="_blank" rel="noopener">${icon('vk')}Открыть чат ещё раз</a>
+    <p class="muted small">Бот ответит в течение 5–10 минут.</p>`;
+});
+
+// ---------- Смена пароля ----------
+
+$('#passForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const pass = $('#newPass').value;
+  if (pass !== $('#newPass2').value) return toast('Пароли не совпадают');
+  if (pass === S.pass) return toast('Это и так твой пароль');
+  const btn = e.target.querySelector('button[type=submit]');
+  btn.disabled = true;
+  try {
+    const oldId = S.uid, oldPath = S.userPath;
+    const newId = await userFileId(S.login, pass);
+    if (!(await saveFile(`data/users/${newId}.enc.json`, S.store, pass, 'Смена пароля'))) return;
+    S.shared = await reload(SHARED_PATH, S.shared);
+    const me = S.shared.users.find(u => u.id === oldId);
+    if (me) me.id = newId;
+    await saveShared('Смена пароля');
+    await moveUserData(oldId, newId, S.store.sharedKey);
+    await deleteFile(oldPath, 'Смена пароля: старый файл');
+    S.pass = pass;
+    LS.set('pass', pass);
+    await loadData();
+    renderAll();
+    e.target.reset();
+    toast('Пароль изменён');
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 if ('serviceWorker' in navigator) {
@@ -190,4 +280,4 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => hadController && location.reload());
   navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
 }
-S.pass ? start() : showLogin();
+S.login && S.pass ? start() : showLogin();

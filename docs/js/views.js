@@ -186,6 +186,7 @@ function renderMore() {
   $('#profileInfo').innerHTML = `
     <div class="avatar big">${esc(initials())}</div>
     <div><b>${esc(S.store.settings.fio)}</b><div class="muted small">Группа ${esc(normGroup(S.store.settings.group))}${S.store.admin ? ' · админ' : ''}</div></div>`;
+  $('#loginInfo').innerHTML = `Твой логин: <b>${esc(S.store.settings.login || S.login)}</b>. Пароль меняется на всех устройствах — на других надо будет войти заново.`;
   const days = Object.keys(S.schedule.days).sort();
   $('#schedInfo').textContent = `Показана группа ${S.schedule.group}. Последний день в расписании: ${days.length ? dayTitle(days[days.length - 1]) : '—'}.`;
   renderNotify();

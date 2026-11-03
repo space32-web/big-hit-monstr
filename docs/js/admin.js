@@ -1,6 +1,6 @@
 // Админка: расписание со скрина (распознавание Tesseract), ссылки преподавателей, пользователи.
 import { decryptJSON, userFileId } from './crypto.js';
-import { DEFAULT_SLOTS, bestMatch, normGroup, normName, todayISO } from './lessons.js';
+import { DEFAULT_SLOTS, bestMatch, makeLogin, normGroup, normName, todayISO } from './lessons.js';
 
 const $ = sel => document.querySelector(sel);
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -388,9 +388,30 @@ function renderUsers() {
   const users = shared().users || [];
   $('#aUsers').innerHTML = users.length
     ? users.map((u, i) => `
-        <div class="row-item"><span>${esc(u.fio)} · ${esc(u.group)}${u.admin ? ' · админ' : ''}${ctx.links.vk[u.id] ? ' · ВК ✓' : ''}</span>
-          ${u.admin ? '' : `<span class="acts"><button class="btn small danger" type="button" data-a="del-user" data-i="${i}">Удалить</button></span>`}</div>`).join('')
+        <div class="row-item user-row">
+          <span><b>${esc(u.fio)}</b><span class="muted small">${esc(u.group)}${u.admin ? ' · админ' : ''}${u.id === ctx.uid ? ' · это ты' : ''}</span>
+            <span class="tags"><code>${esc(u.login || 'без логина')}</code>${ctx.links.vk[u.id] ? '<span class="chip live">ВК</span>' : ''}</span></span>
+          <span class="acts">
+            ${u.id === ctx.uid ? '' : `<button class="btn small" type="button" data-a="reset-pass" data-i="${i}">Новый пароль</button>`}
+            ${u.id === ctx.uid || u.admin ? '' : `<button class="btn small danger" type="button" data-a="del-user" data-i="${i}">Удалить</button>`}
+          </span></div>`).join('')
     : '<div class="empty">Нет пользователей</div>';
+}
+
+function renderRequests() {
+  const items = (ctx.requests?.items || []).filter(r => r.status !== 'closed');
+  const fresh = items.filter(r => r.status === 'new').length;
+  $('#reqCount').textContent = fresh || '';
+  $('#aRequests').innerHTML = items.length
+    ? items.map(r => `
+        <div class="row-item">
+          <span><b>${esc(r.fio)}</b><span class="muted small"> · ${esc(r.group)} · ${esc(new Date(r.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>
+            <span class="tags">${r.status === 'new' ? '<span class="chip warn">новая</span>' : r.status === 'approved' ? '<span class="chip live">создан, бот отправит логин</span>' : '<span class="chip">отклонена</span>'}</span></span>
+          ${r.status === 'new' ? `<span class="acts">
+            <button class="btn small primary" type="button" data-a="req-ok" data-id="${r.id}">Создать</button>
+            <button class="btn small ghost" type="button" data-a="req-no" data-id="${r.id}">Отклонить</button></span>` : ''}
+        </div>`).join('')
+    : '<div class="empty">Заявок нет. Их присылают через бота ВК с экрана входа.</div>';
 }
 
 function render() {
@@ -411,6 +432,7 @@ function render() {
   renderDays();
   renderTeachers();
   renderUsers();
+  renderRequests();
 }
 
 // ---------- Действия ----------
@@ -432,7 +454,7 @@ async function publish() {
       note: '',
       ...(!r.teacher.trim() && r.room.trim() && { room: r.room.trim() }),
     }));
-  if (!lessons.length && !confirm('Пар нет — опубликовать пустой день?')) return;
+  if (!lessons.length && !(await ctx.ask('Пар нет — опубликовать пустой день?', { ok: 'Опубликовать' }))) return;
 
   const sh = shared();
   // ссылки запоминаются за преподавателем, чтобы в следующий раз подставиться самим
@@ -457,7 +479,7 @@ async function publish() {
 async function clearDay() {
   const g = currentGroup(), date = $('#aDate').value;
   if (!shared().days?.[g]?.[date]) return ctx.toast('На эту дату ничего не загружено');
-  if (!confirm(`Убрать расписание ${g} на ${date}?`)) return;
+  if (!(await ctx.ask(`Убрать расписание ${g} на ${date}?`, { ok: 'Убрать', danger: true }))) return;
   delete shared().days[g][date];
   if (await ctx.saveShared(`Убрано расписание ${g} на ${date}`)) {
     rows = emptyRows();
@@ -470,46 +492,129 @@ function randomPassword() {
   return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-async function addUser(e) {
-  e.preventDefault();
-  const fio = $('#uFio').value.trim().replace(/\s+/g, ' ');
-  const group = normGroup($('#uGroup').value);
-  const password = randomPassword();
-  const id = await userFileId(password);
-  const user = { settings: { fio, group }, homework: [], sharedKey: ctx.store.sharedKey };
-  if (!(await ctx.saveFile(`data/users/${id}.enc.json`, user, password, `Пользователь ${id}`))) return;
+// Новый пользователь: логин из ФИО (EgGrigorev), случайный пароль. Возвращает { login, password }
+async function createUser(fio, group) {
   const sh = shared();
   sh.users ??= [];
-  sh.users.push({ id, fio, group });
+  let login = makeLogin(fio), n = 2;
+  while (sh.users.some(u => (u.login || '').toLowerCase() === login.toLowerCase())) login = makeLogin(fio) + n++;
+  const password = randomPassword();
+  const id = await userFileId(login, password);
+  const user = { settings: { fio, group, login }, homework: [], sharedKey: ctx.store.sharedKey };
+  if (!(await ctx.saveFile(`data/users/${id}.enc.json`, user, password, `Пользователь ${login}`))) return null;
+  sh.users.push({ id, fio, group, login });
   if (!sh.groups.includes(group)) sh.groups.push(group);
-  await ctx.saveShared(`Пользователь: ${fio}`);
-  e.target.reset();
+  if (!(await ctx.saveShared(`Пользователь: ${fio}`))) return null;
+  return { login, password };
+}
+
+function showInvite(fio, { login, password }, note = 'Отправь это другу. Пароль больше нигде не покажется — его можно только сменить.') {
   const url = location.origin + location.pathname;
   const box = $('#uResult');
   box.hidden = false;
   box.innerHTML = `
-    <div class="state">Пароль для ${esc(fio)}</div>
-    <p class="secret">${esc(password)}</p>
-    <p class="small muted">Отправь его другу вместе со ссылкой. Больше он нигде не покажется.</p>
-    <button class="btn" type="button" data-a="copy-invite" data-text="${esc(`Трекер пар: ${url}\nТвой пароль: ${password}`)}">Скопировать приглашение</button>`;
+    <div class="small muted">Доступ для ${esc(fio)}</div>
+    <p>Логин: <span class="secret">${esc(login)}</span><br>Пароль: <span class="secret">${esc(password)}</span></p>
+    <p class="small muted">${esc(note)}</p>
+    <button class="btn" type="button" data-a="copy-invite" data-text="${esc(`Трекер пар: ${url}\nЛогин: ${login}\nПароль: ${password}`)}">Скопировать приглашение</button>`;
+  box.closest('details')?.setAttribute('open', '');
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function addUser(e) {
+  e.preventDefault();
+  const fio = $('#uFio').value.trim().replace(/\s+/g, ' ');
+  const group = normGroup($('#uGroup').value);
+  const creds = await createUser(fio, group);
+  if (!creds) return;
+  e.target.reset();
+  showInvite(fio, creds);
   render();
+}
+
+// Файлы пользователя под старым id: сам файл и уведомления
+async function dropUserFiles(id) {
+  if (!(await ctx.deleteFile(`data/users/${id}.enc.json`, `Удалён файл ${id}`))) return false;
+  await ctx.deleteFile(`data/notify/${id}.enc.json`, `Удалены уведомления ${id}`);
+  return true;
+}
+
+// Привязку ВК пишет и бот, поэтому правим свежую версию файла
+async function moveVk(oldId, newId, message) {
+  const links = await ctx.reload('data/links.enc.json', ctx.links);
+  if (!links.vk[oldId]) return;
+  if (newId) links.vk[newId] = links.vk[oldId];
+  delete links.vk[oldId];
+  ctx.links.vk = links.vk;
+  await ctx.saveLinks(message);
 }
 
 async function deleteUser(i) {
   const u = shared().users[i];
-  if (!confirm(`Удалить ${u.fio}? Его ДЗ пропадут.`)) return;
-  const url = `https://api.github.com/repos/${ctx.repo()}/contents/docs/data/users/${u.id}.enc.json`;
-  const cur = await fetch(`${url}?ref=main&t=${Date.now()}`, { headers: ctx.ghHeaders() });
-  if (cur.ok) {
-    const { sha } = await cur.json();
-    const res = await fetch(url, { method: 'DELETE', headers: ctx.ghHeaders(), body: JSON.stringify({ message: `Удалён пользователь ${u.id}`, sha, branch: 'main' }) });
-    if (!res.ok) return ctx.toast(`Не удалилось: GitHub ответил ${res.status}`);
-  }
+  if (!(await ctx.ask(`Удалить ${u.fio}? Его ДЗ пропадут.`, { ok: 'Удалить', danger: true }))) return;
+  if (!(await dropUserFiles(u.id))) return ctx.toast('Не удалилось: GitHub не ответил, попробуй ещё раз');
+  await moveVk(u.id, null, `ВК: удалён ${u.fio}`);
   shared().users.splice(i, 1);
-  if (await ctx.saveShared(`Удалён: ${u.fio}`)) render();
+  if (await ctx.saveShared(`Удалён: ${u.fio}`)) {
+    ctx.toast(`${u.fio} удалён`);
+    render();
+  }
+}
+
+// Админ не знает чужой пароль и не может расшифровать ДЗ, поэтому сброс создаёт файл заново
+async function resetPassword(i) {
+  const u = shared().users[i];
+  if (u.id === ctx.uid) return ctx.toast('Свой пароль меняй во вкладке «Ещё» — там ДЗ сохранятся');
+  if (!(await ctx.ask(`Выдать ${u.fio} новый пароль? Старый перестанет работать, его ДЗ на сайте пропадут.`, { ok: 'Выдать пароль' }))) return;
+  const login = u.login || makeLogin(u.fio);
+  const password = randomPassword();
+  const id = await userFileId(login, password);
+  const user = { settings: { fio: u.fio, group: u.group, login }, homework: [], sharedKey: ctx.store.sharedKey, ...(u.admin && { admin: true }) };
+  if (!(await ctx.saveFile(`data/users/${id}.enc.json`, user, password, `Новый пароль: ${login}`))) return;
+  const oldId = u.id;
+  Object.assign(u, { id, login });
+  if (!(await ctx.saveShared(`Новый пароль: ${u.fio}`))) return;
+  await moveVk(oldId, id, `ВК: новый пароль ${login}`);
+  await dropUserFiles(oldId);
+  showInvite(u.fio, { login, password }, 'Отправь новый пароль пользователю. Уведомления ВК у него продолжат приходить.');
+  render();
+}
+
+// Заявка из ВК: создаём аккаунт, бот сам отправит логин и пароль в тот же чат
+async function answerRequest(id, approve) {
+  ctx.requests = await ctx.reload('data/requests.enc.json', ctx.requests);
+  const r = ctx.requests.items.find(r => r.id === id);
+  if (!r || r.status !== 'new') return render();
+  if (approve) {
+    if (!(await ctx.ask(`Создать аккаунт для ${r.fio}, ${r.group}?`, { ok: 'Создать' }))) return;
+    const creds = await createUser(r.fio, normGroup(r.group));
+    if (!creds) return;
+    Object.assign(r, { status: 'approved', ...creds });
+    showInvite(r.fio, creds, 'Бот ВК отправит логин и пароль заявителю в течение 5–10 минут.');
+  } else {
+    if (!(await ctx.ask(`Отклонить заявку ${r.fio}?`, { ok: 'Отклонить', danger: true }))) return;
+    r.status = 'rejected';
+  }
+  if (await ctx.saveRequests(approve ? `Заявка одобрена: ${r.fio}` : `Заявка отклонена: ${r.fio}`)) render();
+}
+
+// Панели сворачиваются; какие открыты — помним на этом устройстве
+function bindPanels() {
+  const panels = [...document.querySelectorAll('[data-view="admin"] details[data-panel]')];
+  let saved = {};
+  try { saved = JSON.parse(ctx.LS.get('panels') || '{}'); } catch {}
+  for (const d of panels) {
+    if (d.dataset.panel in saved) d.open = saved[d.dataset.panel];
+    d.addEventListener('toggle', () => {
+      saved[d.dataset.panel] = d.open;
+      ctx.LS.set('panels', JSON.stringify(saved));
+    });
+  }
+  document.querySelectorAll('[data-panels]').forEach(b => (b.onclick = () => panels.forEach(d => (d.open = b.dataset.panels === 'open'))));
 }
 
 function bind() {
+  bindPanels();
   $('#aFile').addEventListener('change', e => handleFile(e.target.files[0]));
   const drop = $('#aDrop');
   drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
@@ -556,14 +661,19 @@ function bind() {
       $('#aDate').value = d;
       loadDay();
       status(`Редактирование: ${g}, ${d}`);
+      $('#aGroup').closest('details').open = true;
       $('#aGroup').scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else if (a === 'del-teacher') {
       const t = shared().teachers[i];
-      if (!confirm(`Удалить ${t.name}?`)) return;
+      if (!(await ctx.ask(`Удалить ${t.name}?`, { ok: 'Удалить', danger: true }))) return;
       shared().teachers.splice(i, 1);
       if (await ctx.saveShared(`Удалён преподаватель ${t.name}`)) render();
     } else if (a === 'del-user') {
       deleteUser(Number(i));
+    } else if (a === 'reset-pass') {
+      resetPassword(Number(i));
+    } else if (a === 'req-ok' || a === 'req-no') {
+      answerRequest(el.dataset.id, a === 'req-ok');
     } else if (a === 'copy-invite') {
       try { await navigator.clipboard.writeText(text); ctx.toast('Скопировано'); } catch { ctx.toast('Не удалось скопировать'); }
     }
@@ -617,6 +727,8 @@ function bind() {
       shared().vkGroup = group || undefined;
       // при ошибке saveShared сам показывает причину — не перебиваем её
       if (!(await ctx.saveShared('Сообщество ВК'))) return (shared().vkGroup = prev), render();
+      // экрану входа адрес нужен до расшифровки — кладём его отдельным открытым файлом
+      await ctx.saveFile('data/public.json', { vkGroup: group }, null, 'Сообщество ВК для экрана входа');
     }
     ctx.toast('Сохранено');
     render();

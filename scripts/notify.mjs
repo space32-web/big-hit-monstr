@@ -7,11 +7,11 @@
 // собеседника в data/links.enc.json. Всё шифруется общим ключом.
 //
 // Запуск: DATA_KEY=... VK_TOKEN=... VAPID_PRIVATE=... node scripts/notify.mjs [--dry] [--now 2026-06-02T15:45]
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import webpush from 'web-push';
-import { config, sharedKey, readShared, readJSON, writeJSON, LINKS_FILE, NOTIFY_DIR, SCHEDULE_FILE, STATE_DIR } from './lib/common.mjs';
+import { config, sharedKey, readShared, readJSON, writeJSON, LINKS_FILE, NOTIFY_DIR, REQUESTS_FILE, SCHEDULE_FILE, STATE_DIR } from './lib/common.mjs';
 import { decryptJSON, encryptJSON } from '../docs/js/crypto.js';
 import { blocksForDate, findTeachers, groupDays, lessonMs, lessonRoom, plural, todayISO, addDays, TZ_OFFSET_HOURS } from '../docs/js/lessons.js';
 
@@ -29,6 +29,9 @@ const shared = await readShared();
 const all = await decryptJSON(readJSON(SCHEDULE_FILE), key);
 const links = existsSync(LINKS_FILE) ? await decryptJSON(readJSON(LINKS_FILE), key) : { vk: {} };
 let linksChanged = false;
+// Заявки на аккаунт: бот принимает их в ВК, админ одобряет на сайте, бот присылает логин и пароль
+const requests = existsSync(REQUESTS_FILE) ? await decryptJSON(readJSON(REQUESTS_FILE), key) : { items: [] };
+let requestsChanged = false;
 const statePath = join(STATE_DIR, 'notify.json');
 const state = readJSON(statePath, { sent: {} });
 const n = config.notify;
@@ -63,7 +66,48 @@ async function vk(method, params) {
 const vkSend = (peer, text) =>
   dry ? console.log(`--- [dry vk ${peer}] ${text}`) : vk('messages.send', { peer_id: peer, random_id: randomInt(2 ** 31), message: text });
 
-// Отвечаем на новые сообщения сообществу: код с сайта — привязка, «стоп» — отвязка
+const adminPeers = () => (shared.users || []).filter(u => u.admin && links.vk[u.id]).map(u => links.vk[u.id]);
+
+// «Заявка: Иванов Иван Иванович, 3427А» — так её формирует экран входа
+async function takeRequest(peer, text) {
+  const m = text.match(/^заявка\s*[:\-—]?\s*(.+?)\s*[,;]\s*(\d{3,4}\s*[А-ЯЁA-Zа-яёa-z]?)\s*$/i);
+  if (!m) return vkSend(peer, 'Чтобы попросить аккаунт, пришли так:\nЗаявка: Фамилия Имя Отчество, группа\nНапример: Заявка: Иванов Иван Иванович, 3427А');
+  const fio = m[1].replace(/\s+/g, ' ');
+  const group = m[2].replace(/\s+/g, '').toUpperCase().replace(/A/g, 'А');
+  if (requests.items.some(r => r.peer === peer && r.status === 'new')) return vkSend(peer, 'Твоя заявка уже у админа, жди ответа.');
+  requests.items.push({ id: randomUUID(), fio, group, peer, at: new Date(nowMs).toISOString(), status: 'new' });
+  requestsChanged = true;
+  await vkSend(peer, `Заявка принята: ${fio}, ${group}. Когда админ создаст аккаунт, я пришлю сюда логин и пароль.`);
+  for (const admin of adminPeers()) await vkSend(admin, `Новая заявка на аккаунт: ${fio}, ${group}. Одобрить: ${appUrl} → Админ → Заявки.`);
+}
+
+// Ответ по заявкам, которые админ уже разобрал
+async function deliverRequests() {
+  for (const r of requests.items) {
+    if (r.status === 'approved' && r.password) {
+      await vkSend(r.peer, `Аккаунт готов!
+Сайт: ${appUrl}
+Логин: ${r.login}
+Пароль: ${r.password}
+
+Пароль можно сменить на сайте во вкладке «Ещё». Это сообщение лучше удалить.`);
+      delete r.password;
+      r.status = 'closed';
+      requestsChanged = true;
+    } else if (r.status === 'rejected') {
+      await vkSend(r.peer, 'Админ отклонил заявку на аккаунт. Если это ошибка — напиши ему напрямую.');
+      r.status = 'closed';
+      requestsChanged = true;
+    }
+  }
+  // закрытые старше месяца больше не нужны
+  const cutoff = nowMs - 30 * 86400e3;
+  const before = requests.items.length;
+  requests.items = requests.items.filter(r => r.status !== 'closed' || Date.parse(r.at) > cutoff);
+  requestsChanged ||= requests.items.length !== before;
+}
+
+// Отвечаем на новые сообщения сообществу: заявка, код с сайта — привязка, «стоп» — отвязка
 async function processInbox() {
   const { items } = await vk('messages.getConversations', { filter: 'unanswered', count: 200 });
   for (const { conversation, last_message: msg } of items) {
@@ -72,7 +116,9 @@ async function processInbox() {
     const linked = Object.keys(links.vk).filter(id => links.vk[id] === peer);
     const code = text.match(/\b\d{6}\b/)?.[0];
     const uid = code && Object.keys(prefs).find(id => prefs[id].vkCode === code && userById(id));
-    if (/^(стоп|stop|отписаться)$/i.test(text)) {
+    if (/^заявка/i.test(text)) {
+      await takeRequest(peer, text);
+    } else if (/^(стоп|stop|отписаться)$/i.test(text)) {
       linked.forEach(id => delete links.vk[id]);
       linksChanged ||= linked.length > 0;
       await vkSend(peer, 'Готово, больше не пишу. Чтобы включить снова, пришли код с сайта.');
@@ -84,7 +130,8 @@ async function processInbox() {
     } else if (linked.length) {
       await vkSend(peer, `Я только присылаю напоминания. Трекер: ${appUrl}\nОтключить — напиши «стоп».`);
     } else {
-      await vkSend(peer, `Привет! Чтобы получать напоминания о парах, открой трекер (${appUrl}) → «Ещё» → «Уведомления» и пришли сюда код оттуда.`);
+      await vkSend(peer, `Привет! Чтобы получать напоминания о парах, открой трекер (${appUrl}) → «Ещё» → «Уведомления» и пришли сюда код оттуда.
+Нет аккаунта? Пришли: Заявка: Фамилия Имя Отчество, группа`);
     }
   }
 }
@@ -92,6 +139,7 @@ async function processInbox() {
 if (vkToken) {
   try {
     await processInbox();
+    await deliverRequests();
   } catch (e) {
     console.log('Сообщения ВК не прочитались: ' + e.message);
   }
@@ -206,4 +254,5 @@ for (const k of Object.keys(state.sent)) if ((k.match(/\d{4}-\d{2}-\d{2}/)?.[0] 
 if (!dry) {
   writeJSON(statePath, state);
   if (linksChanged) writeJSON(LINKS_FILE, await encryptJSON(links, key));
+  if (requestsChanged) writeJSON(REQUESTS_FILE, await encryptJSON(requests, key));
 }

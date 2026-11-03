@@ -16,15 +16,38 @@
 <body>
   <div class="bg-glow" aria-hidden="true"></div>
 
-  <!-- Вход: пароль -->
+  <!-- Вход: логин и пароль, заявка на аккаунт -->
   <section id="login" class="login" hidden>
-    <div class="logo"><img src="icon.svg" alt="" width="72" height="72"></div>
-    <h1>КНН трекер</h1>
-    <p class="muted">Пары, вход на ВКС и домашка — в одном месте.</p>
-    <form id="loginForm" class="card form">
-      <input id="loginPass" type="password" autocomplete="current-password" placeholder="Пароль" required>
-      <button class="btn primary big" type="submit">Войти</button>
-      <p id="loginErr" class="error" hidden></p>
+    <div class="login-brand">
+      <div class="logo"><img src="icon.svg" alt="" width="72" height="72"></div>
+      <h1>КНН трекер</h1>
+      <p class="muted">Пары, вход на ВКС и домашка — в одном месте.</p>
+      <ul class="perks">
+        <li><i data-ic="video"></i>Вход на пару в одно касание</li>
+        <li><i data-ic="bell"></i>Напоминания в ВК и push</li>
+        <li><i data-ic="book"></i>ДЗ со сроками под рукой</li>
+      </ul>
+    </div>
+
+    <form id="loginForm" class="card form auth">
+      <h2 class="in-card">Вход</h2>
+      <label class="field"><i data-ic="user"></i><input id="loginName" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин, например EgGrigorev" required></label>
+      <label class="field"><i data-ic="shield"></i><input id="loginPass" type="password" autocomplete="current-password" placeholder="Пароль" required>
+        <button type="button" class="eye" data-eye="loginPass" aria-label="Показать пароль"><i data-ic="eye"></i></button></label>
+      <p id="loginErr" class="error small" hidden></p>
+      <button id="loginBtn" class="btn primary big" type="submit">Войти</button>
+      <p class="switch">Нет учётной записи? <button type="button" class="link" data-auth="request">Отправить запрос на создание</button></p>
+    </form>
+
+    <form id="requestForm" class="card form auth" hidden>
+      <h2 class="in-card">Запрос на аккаунт</h2>
+      <p class="muted small">Заявка уйдёт админу через бота ВКонтакте. Когда аккаунт создадут, бот пришлёт тебе логин и пароль туда же.</p>
+      <label class="field"><i data-ic="user"></i><input id="reqFio" placeholder="Фамилия Имя Отчество" required></label>
+      <label class="field"><i data-ic="calendar"></i><input id="reqGroup" placeholder="Группа, например 3427А" required></label>
+      <p id="reqLogin" class="muted small" hidden></p>
+      <button class="btn primary big" type="submit"><i data-ic="vk"></i>Отправить через ВК</button>
+      <div id="reqDone" class="req-done" hidden></div>
+      <p class="switch"><button type="button" class="link" data-auth="login">← Назад ко входу</button></p>
     </form>
   </section>
 
@@ -99,6 +122,15 @@
           </div>
         </div>
 
+        <form id="passForm" class="card form">
+          <h2 class="in-card"><i data-ic="shield"></i>Сменить пароль</h2>
+          <p id="loginInfo" class="muted small"></p>
+          <label class="field"><i data-ic="shield"></i><input id="newPass" type="password" autocomplete="new-password" minlength="6" placeholder="Новый пароль, от 6 символов" required>
+            <button type="button" class="eye" data-eye="newPass" aria-label="Показать пароль"><i data-ic="eye"></i></button></label>
+          <label class="field"><i data-ic="check"></i><input id="newPass2" type="password" autocomplete="new-password" placeholder="Повтори пароль" required></label>
+          <button class="btn" type="submit">Сменить пароль</button>
+        </form>
+
         <div class="card">
           <p id="schedInfo" class="muted small"></p>
           <p class="muted small">ФИО, группу и ссылки на пары настраивает админ.</p>
@@ -106,87 +138,110 @@
         </div>
       </section>
 
-      <!-- Админ -->
+      <!-- Админ: каждый блок сворачивается, состояние запоминается -->
       <section data-view="admin" class="view" hidden>
         <p id="adminWarn" class="card error" hidden></p>
+        <div class="panel-tools">
+          <button class="btn small ghost" type="button" data-panels="open">Развернуть всё</button>
+          <button class="btn small ghost" type="button" data-panels="close">Свернуть всё</button>
+        </div>
 
-        <div class="card form">
-          <h2 class="in-card"><i data-ic="spark"></i>Расписание со скрина</h2>
-          <div class="grid2">
-            <label>Группа<input id="aGroup" list="aGroups" autocomplete="off"></label>
-            <label>Дата<input id="aDate" type="date"></label>
+        <details class="card panel" data-panel="schedule" open>
+          <summary><span class="ph"><i data-ic="spark"></i>Расписание со скрина</span><i data-ic="right"></i></summary>
+          <div class="panel-body form">
+            <div class="grid2">
+              <label>Группа<input id="aGroup" list="aGroups" autocomplete="off"></label>
+              <label>Дата<input id="aDate" type="date"></label>
+            </div>
+            <datalist id="aGroups"></datalist>
+            <label class="drop" id="aDrop">
+              <input id="aFile" type="file" accept="image/*" hidden>
+              <i data-ic="inbox"></i>
+              <span>Нажми, чтобы выбрать скрин, или вставь его (Ctrl+V)</span>
+              <img id="aPreview" alt="" hidden>
+            </label>
+            <p id="aStatus" class="muted small"></p>
+            <div id="aRows"></div>
+            <datalist id="aSubjects"></datalist>
+            <datalist id="aTeachers"></datalist>
+            <div class="links">
+              <button id="aPublish" class="btn primary" type="button">Опубликовать для всех</button>
+              <button id="aClearDay" class="btn danger" type="button">Убрать этот день</button>
+            </div>
           </div>
-          <datalist id="aGroups"></datalist>
-          <label class="drop" id="aDrop">
-            <input id="aFile" type="file" accept="image/*" hidden>
-            <i data-ic="inbox"></i>
-            <span>Нажми, чтобы выбрать скрин, или вставь его (Ctrl+V)</span>
-            <img id="aPreview" alt="" hidden>
-          </label>
-          <p id="aStatus" class="muted small"></p>
-          <div id="aRows"></div>
-          <datalist id="aSubjects"></datalist>
-          <datalist id="aTeachers"></datalist>
-          <div class="links">
-            <button id="aPublish" class="btn primary" type="button">Опубликовать для всех</button>
-            <button id="aClearDay" class="btn danger" type="button">Убрать этот день</button>
+        </details>
+
+        <details class="card panel" data-panel="requests" open>
+          <summary><span class="ph"><i data-ic="inbox"></i>Заявки на аккаунт <b id="reqCount" class="count"></b></span><i data-ic="right"></i></summary>
+          <div class="panel-body"><div id="aRequests"></div></div>
+        </details>
+
+        <details class="card panel" data-panel="users">
+          <summary><span class="ph"><i data-ic="user"></i>Пользователи</span><i data-ic="right"></i></summary>
+          <div class="panel-body">
+            <div id="aUsers"></div>
+            <form id="userForm" class="form inline-form">
+              <input id="uFio" placeholder="Фамилия Имя Отчество" required>
+              <input id="uGroup" placeholder="Группа, например 3426" required>
+              <button class="btn" type="submit"><i data-ic="plus"></i>Создать и выдать пароль</button>
+            </form>
+            <div id="uResult" class="card invite" hidden></div>
           </div>
-        </div>
+        </details>
 
-        <div class="card">
-          <h2 class="in-card">Загруженные дни</h2>
-          <div id="aDays"></div>
-        </div>
+        <details class="card panel" data-panel="days">
+          <summary><span class="ph"><i data-ic="calendar"></i>Загруженные дни</span><i data-ic="right"></i></summary>
+          <div class="panel-body"><div id="aDays"></div></div>
+        </details>
 
-        <div class="card">
-          <h2 class="in-card">Преподаватели и ссылки</h2>
-          <p class="muted small">В расписании только фамилия — по ней подставляется ссылка. Изменения сохраняются сразу.</p>
-          <div id="teacherList"></div>
-          <form id="teacherForm" class="form inline-form">
-            <input id="tName" placeholder="Фамилия Имя Отчество" required>
-            <input id="tRoom" type="url" placeholder="https://vks.knn-nk.ru/rooms/…/join">
-            <button class="btn" type="submit">Добавить</button>
-          </form>
-        </div>
+        <details class="card panel" data-panel="teachers">
+          <summary><span class="ph"><i data-ic="link"></i>Преподаватели и ссылки</span><i data-ic="right"></i></summary>
+          <div class="panel-body">
+            <p class="muted small">В расписании только фамилия — по ней подставляется ссылка. Изменения сохраняются сразу.</p>
+            <div id="teacherList"></div>
+            <form id="teacherForm" class="form inline-form">
+              <input id="tName" placeholder="Фамилия Имя Отчество" required>
+              <input id="tRoom" type="url" placeholder="https://vks.knn-nk.ru/rooms/…/join">
+              <button class="btn" type="submit">Добавить</button>
+            </form>
+          </div>
+        </details>
 
-        <div class="card">
-          <h2 class="in-card">Пользователи</h2>
-          <div id="aUsers"></div>
-          <form id="userForm" class="form inline-form">
-            <input id="uFio" placeholder="Фамилия Имя Отчество" required>
-            <input id="uGroup" placeholder="Группа, например 3426" required>
-            <button class="btn" type="submit">Создать и выдать пароль</button>
-          </form>
-          <div id="uResult" class="card invite" hidden></div>
-        </div>
+        <details class="card panel" data-panel="slots">
+          <summary><span class="ph"><i data-ic="clock"></i>Время пар</span><i data-ic="right"></i></summary>
+          <div class="panel-body form">
+            <label>По порядку, через запятую<input id="aSlots"></label>
+            <button id="aSaveSlots" class="btn" type="button">Сохранить</button>
+          </div>
+        </details>
 
-        <div class="card form">
-          <h2 class="in-card">Время пар</h2>
-          <label>По порядку, через запятую<input id="aSlots"></label>
-          <button id="aSaveSlots" class="btn" type="button">Сохранить</button>
-        </div>
+        <details class="card panel" data-panel="view">
+          <summary><span class="ph"><i data-ic="home"></i>Смотреть расписание группы</span><i data-ic="right"></i></summary>
+          <div class="panel-body form">
+            <label>Группа на вкладках «Сегодня» и «Неделя»<input id="aView" list="aGroups"></label>
+            <button id="aSaveView" class="btn" type="button">Показать</button>
+          </div>
+        </details>
 
-        <div class="card form">
-          <h2 class="in-card">Смотреть расписание группы</h2>
-          <label>Группа на вкладках «Сегодня» и «Неделя»<input id="aView" list="aGroups"></label>
-          <button id="aSaveView" class="btn" type="button">Показать</button>
-        </div>
+        <details class="card panel" data-panel="ai">
+          <summary><span class="ph"><i data-ic="bell"></i>ИИ и рассылка</span><i data-ic="right"></i></summary>
+          <div class="panel-body form">
+            <label class="check"><input id="aiToggle" type="checkbox"> Распознавать скрины через ИИ (Perplexity)</label>
+            <p class="muted small">Скрин уходит в GitHub Actions, ответ приходит через 30–60 секунд. Ключ хранится секретом <code>PPLX_KEY</code> в GitHub. Если ИИ не ответит, сработает обычное распознавание.</p>
+            <label>Сообщество ВК для рассылки (адрес, например club123456 или knn_bot)<input id="vkGroupInput" autocomplete="off"></label>
+            <button id="saveAi" class="btn" type="button">Сохранить</button>
+          </div>
+        </details>
 
-        <div class="card form">
-          <h2 class="in-card">ИИ и рассылка</h2>
-          <label class="check"><input id="aiToggle" type="checkbox"> Распознавать скрины через ИИ (Perplexity)</label>
-          <p class="muted small">Скрин уходит в GitHub Actions, ответ приходит через 30–60 секунд. Ключ хранится секретом <code>PPLX_KEY</code> в GitHub. Если ИИ не ответит, сработает обычное распознавание.</p>
-          <label>Сообщество ВК для рассылки (адрес, например club123456 или knn_bot)<input id="vkGroupInput" autocomplete="off"></label>
-          <button id="saveAi" class="btn" type="button">Сохранить</button>
-        </div>
-
-        <div class="card form">
-          <h2 class="in-card">Доступ GitHub</h2>
-          <p class="muted small">Fine-grained токен с доступом Contents: Read and write к репозиторию. Сохраняется зашифрованным для всех пользователей — им ничего настраивать не нужно.</p>
-          <label>Токен<input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"></label>
-          <button id="saveToken" class="btn" type="button">Сохранить</button>
-          <p id="writeStatus" class="small"></p>
-        </div>
+        <details class="card panel" data-panel="github">
+          <summary><span class="ph"><i data-ic="shield"></i>Доступ GitHub</span><i data-ic="right"></i></summary>
+          <div class="panel-body form">
+            <p class="muted small">Fine-grained токен с доступом Contents: Read and write к репозиторию. Сохраняется зашифрованным для всех пользователей — им ничего настраивать не нужно.</p>
+            <label>Токен<input id="tokenInput" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+            <button id="saveToken" class="btn" type="button">Сохранить</button>
+            <p id="writeStatus" class="small"></p>
+          </div>
+        </details>
       </section>
     </main>
 

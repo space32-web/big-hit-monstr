@@ -98,8 +98,35 @@ const PATHS = {
   spark: '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="2.5"/>',
   vk: '<path d="M3 7h3.2c.3 3 1.6 5 3 5.4V7h3v3c1.3-.2 2.6-1.6 3.2-3H19c-.5 2-2 3.7-3.2 4.4 1.2.6 2.9 2.1 3.7 4.6h-3.2c-.6-1.6-2-2.9-3.8-3.1V16h-.4C7 16 3.4 13 3 7z"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  send: '<path d="M21 3 10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
   inbox: '<path d="M3 13h5l1.5 3h5L16 13h5"/><path d="M5 5h14l2 8v6H3v-6z"/>',
 };
 
 export const icon = (name, cls = '') =>
   `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${PATHS[name] || ''}</svg>`;
+
+// Подтверждение внутри страницы: системный confirm() браузер может молча глушить
+// (галочка «запретить сайту показывать окна»), тогда кнопки «Удалить» просто не работали.
+export function ask(text, { ok = 'Да', danger = false } = {}) {
+  return new Promise(resolve => {
+    const wrap = document.createElement('div');
+    wrap.className = 'modal';
+    wrap.innerHTML = `
+      <div class="modal-card" role="dialog" aria-modal="true">
+        <p>${esc(text)}</p>
+        <div class="links">
+          <button class="btn ${danger ? 'danger' : 'primary'}" data-r="1">${esc(ok)}</button>
+          <button class="btn ghost" data-r="0">Отмена</button>
+        </div>
+      </div>`;
+    const done = v => { wrap.remove(); resolve(v); };
+    wrap.addEventListener('click', e => {
+      const r = e.target.closest('[data-r]');
+      if (r) done(r.dataset.r === '1');
+      else if (e.target === wrap) done(false);
+    });
+    document.body.append(wrap);
+    wrap.querySelector('[data-r="1"]').focus();
+  });
+}
