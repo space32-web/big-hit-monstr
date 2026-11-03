@@ -405,13 +405,14 @@ function renderRequests() {
   $('#aRequests').innerHTML = items.length
     ? items.map(r => `
         <div class="row-item">
-          <span><b>${esc(r.fio)}</b><span class="muted small"> · ${esc(r.group)} · ${esc(new Date(r.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>
-            <span class="tags">${r.status === 'new' ? '<span class="chip warn">новая</span>' : r.status === 'approved' ? '<span class="chip live">создан, бот отправит логин</span>' : '<span class="chip">отклонена</span>'}</span></span>
+          <span><b>${esc(r.fio)}</b><span class="muted small">${r.type === 'reset' ? `сброс пароля · ${esc(r.login)}` : `новый аккаунт · ${esc(r.group)}`} · ${esc(new Date(r.at).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</span>
+            <span class="tags">${r.status === 'new' ? '<span class="chip warn">новая</span>' : r.status === 'approved' ? `<span class="chip live">${r.type === 'reset' ? 'пароль выдан, бот отправит' : 'создан, бот отправит логин'}</span>` : '<span class="chip">отклонена</span>'}
+              ${r.type === 'reset' && !r.linked ? '<span class="chip danger">ВК не привязан — передай пароль сам</span>' : ''}</span></span>
           ${r.status === 'new' ? `<span class="acts">
-            <button class="btn small primary" type="button" data-a="req-ok" data-id="${r.id}">Создать</button>
+            <button class="btn small primary" type="button" data-a="req-ok" data-id="${r.id}">${r.type === 'reset' ? 'Выдать пароль' : 'Создать'}</button>
             <button class="btn small ghost" type="button" data-a="req-no" data-id="${r.id}">Отклонить</button></span>` : ''}
         </div>`).join('')
-    : '<div class="empty">Заявок нет. Их присылают через бота ВК с экрана входа.</div>';
+    : '<div class="empty">Запросов нет. Новые аккаунты и сброс пароля просят через бота ВК с экрана входа.</div>';
 }
 
 function render() {
@@ -561,8 +562,9 @@ async function deleteUser(i) {
   }
 }
 
-// Админ не знает чужой пароль и не может расшифровать ДЗ, поэтому сброс создаёт файл заново
-async function resetPassword(i) {
+// Админ не знает чужой пароль и не может расшифровать ДЗ, поэтому сброс создаёт файл заново.
+// request — запрос «забыл пароль» из ВК: тогда пароль доставит бот. Возвращает { login, password }
+async function resetPassword(i, request) {
   const u = shared().users[i];
   if (u.id === ctx.uid) return ctx.toast('Свой пароль меняй во вкладке «Ещё» — там ДЗ сохранятся');
   if (!(await ctx.ask(`Выдать ${u.fio} новый пароль? Старый перестанет работать, его ДЗ на сайте пропадут.`, { ok: 'Выдать пароль' }))) return;
@@ -576,26 +578,39 @@ async function resetPassword(i) {
   if (!(await ctx.saveShared(`Новый пароль: ${u.fio}`))) return;
   await moveVk(oldId, id, `ВК: новый пароль ${login}`);
   await dropUserFiles(oldId);
-  showInvite(u.fio, { login, password }, 'Отправь новый пароль пользователю. Уведомления ВК у него продолжат приходить.');
+  const note = !request
+    ? 'Отправь новый пароль пользователю. Уведомления ВК у него продолжат приходить.'
+    : request.linked
+      ? 'Бот ВК отправит новый пароль в ВК, привязанный к аккаунту, в течение 5–10 минут.'
+      : 'ВК к аккаунту не привязан — передай пароль пользователю сам.';
+  showInvite(u.fio, { login, password }, note);
   render();
+  return { login, password };
 }
 
-// Заявка из ВК: создаём аккаунт, бот сам отправит логин и пароль в тот же чат
+// Запрос из ВК: новый аккаунт или сброс пароля. Ответ с логином и паролем отправит бот
 async function answerRequest(id, approve) {
   ctx.requests = await ctx.reload('data/requests.enc.json', ctx.requests);
   const r = ctx.requests.items.find(r => r.id === id);
   if (!r || r.status !== 'new') return render();
-  if (approve) {
+  if (approve && r.type === 'reset') {
+    const i = shared().users.findIndex(u => u.login === r.login);
+    if (i < 0) return ctx.toast(`Пользователя ${r.login} уже нет`);
+    const creds = await resetPassword(i, r);
+    if (!creds) return;
+    // без привязанного ВК пароль бот не отправит — его передаёт админ
+    Object.assign(r, { status: 'approved', ...(r.linked && creds) });
+  } else if (approve) {
     if (!(await ctx.ask(`Создать аккаунт для ${r.fio}, ${r.group}?`, { ok: 'Создать' }))) return;
     const creds = await createUser(r.fio, normGroup(r.group));
     if (!creds) return;
     Object.assign(r, { status: 'approved', ...creds });
     showInvite(r.fio, creds, 'Бот ВК отправит логин и пароль заявителю в течение 5–10 минут.');
   } else {
-    if (!(await ctx.ask(`Отклонить заявку ${r.fio}?`, { ok: 'Отклонить', danger: true }))) return;
+    if (!(await ctx.ask(`Отклонить запрос ${r.fio}?`, { ok: 'Отклонить', danger: true }))) return;
     r.status = 'rejected';
   }
-  if (await ctx.saveRequests(approve ? `Заявка одобрена: ${r.fio}` : `Заявка отклонена: ${r.fio}`)) render();
+  if (await ctx.saveRequests(approve ? `Запрос выполнен: ${r.fio}` : `Запрос отклонён: ${r.fio}`)) render();
 }
 
 // Панели сворачиваются; какие открыты — помним на этом устройстве

@@ -78,13 +78,38 @@ async function takeRequest(peer, text) {
   requests.items.push({ id: randomUUID(), fio, group, peer, at: new Date(nowMs).toISOString(), status: 'new' });
   requestsChanged = true;
   await vkSend(peer, `Заявка принята: ${fio}, ${group}. Когда админ создаст аккаунт, я пришлю сюда логин и пароль.`);
-  for (const admin of adminPeers()) await vkSend(admin, `Новая заявка на аккаунт: ${fio}, ${group}. Одобрить: ${appUrl} → Админ → Заявки.`);
+  for (const admin of adminPeers()) await vkSend(admin, `Новая заявка на аккаунт: ${fio}, ${group}. Одобрить: ${appUrl} → Админ → Запросы из ВК.`);
+}
+
+// «Сброс пароля: EgGrigorev». Новый пароль уйдёт только в ВК, привязанный к этому логину
+async function takeReset(peer, text) {
+  const login = text.replace(/^сброс(\s+пароля)?\s*[:\-—]?\s*/i, '').trim();
+  const user = (shared.users || []).find(u => (u.login || '').toLowerCase() === login.toLowerCase());
+  if (!login) return vkSend(peer, 'Пришли так: Сброс пароля: твой логин');
+  if (!user) return vkSend(peer, `Логина «${login}» нет. Логин — две буквы имени и фамилия латиницей, например IvIvanov.`);
+  if (requests.items.some(r => r.type === 'reset' && r.login === user.login && r.status === 'new')) return vkSend(peer, 'Запрос на сброс уже у админа, жди ответа.');
+  const linked = links.vk[user.id];
+  requests.items.push({ id: randomUUID(), type: 'reset', fio: user.fio, group: user.group, login: user.login, peer, linked: Boolean(linked), at: new Date(nowMs).toISOString(), status: 'new' });
+  requestsChanged = true;
+  await vkSend(peer, linked
+    ? 'Запрос на сброс пароля отправлен админу. Новый пароль придёт в ВК, привязанный к аккаунту.'
+    : 'Запрос отправлен админу. К аккаунту не привязан ВК, поэтому новый пароль админ передаст лично.');
+  for (const admin of adminPeers()) await vkSend(admin, `Запрос на сброс пароля: ${user.fio} (${user.login})${linked ? '' : ', ВК не привязан'}. ${appUrl} → Админ → Запросы из ВК.`);
 }
 
 // Ответ по заявкам, которые админ уже разобрал
 async function deliverRequests() {
   for (const r of requests.items) {
-    if (r.status === 'approved' && r.password) {
+    if (r.type === 'reset' && r.status === 'approved') {
+      // только в привязанный к аккаунту ВК: иначе по чужому логину можно было бы получить пароль
+      const user = (shared.users || []).find(u => u.login === r.login);
+      const to = user && links.vk[user.id];
+      if (to && r.password) await vkSend(to, `Пароль сброшен.\nЛогин: ${r.login}\nНовый пароль: ${r.password}\n\nСменить его можно на сайте во вкладке «Ещё». Это сообщение лучше удалить.`);
+      if (!to) await vkSend(r.peer, 'Пароль сброшен. Новый пароль тебе передаст админ.');
+      delete r.password;
+      r.status = 'closed';
+      requestsChanged = true;
+    } else if (r.status === 'approved' && r.password) {
       await vkSend(r.peer, `Аккаунт готов!
 Сайт: ${appUrl}
 Логин: ${r.login}
@@ -95,7 +120,7 @@ async function deliverRequests() {
       r.status = 'closed';
       requestsChanged = true;
     } else if (r.status === 'rejected') {
-      await vkSend(r.peer, 'Админ отклонил заявку на аккаунт. Если это ошибка — напиши ему напрямую.');
+      await vkSend(r.peer, `Админ отклонил ${r.type === 'reset' ? 'запрос на сброс пароля' : 'заявку на аккаунт'}. Если это ошибка — напиши ему напрямую.`);
       r.status = 'closed';
       requestsChanged = true;
     }
@@ -118,6 +143,8 @@ async function processInbox() {
     const uid = code && Object.keys(prefs).find(id => prefs[id].vkCode === code && userById(id));
     if (/^заявка/i.test(text)) {
       await takeRequest(peer, text);
+    } else if (/^сброс/i.test(text)) {
+      await takeReset(peer, text);
     } else if (/^(стоп|stop|отписаться)$/i.test(text)) {
       linked.forEach(id => delete links.vk[id]);
       linksChanged ||= linked.length > 0;

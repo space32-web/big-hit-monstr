@@ -31,11 +31,12 @@
 
     <form id="loginForm" class="card form auth">
       <h2 class="in-card">Вход</h2>
-      <label class="field"><i data-ic="user"></i><input id="loginName" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин, например EgGrigorev" required></label>
+      <label class="field"><i data-ic="user"></i><input id="loginName" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Логин" required></label>
       <label class="field"><i data-ic="shield"></i><input id="loginPass" type="password" autocomplete="current-password" placeholder="Пароль" required>
         <button type="button" class="eye" data-eye="loginPass" aria-label="Показать пароль"><i data-ic="eye"></i></button></label>
       <p id="loginErr" class="error small" hidden></p>
       <button id="loginBtn" class="btn primary big" type="submit">Войти</button>
+      <p class="switch"><button type="button" class="link" data-auth="forgot">Забыл пароль?</button></p>
       <p class="switch">Нет учётной записи? <button type="button" class="link" data-auth="request">Отправить запрос на создание</button></p>
     </form>
 
@@ -47,6 +48,15 @@
       <p id="reqLogin" class="muted small" hidden></p>
       <button class="btn primary big" type="submit"><i data-ic="vk"></i>Отправить через ВК</button>
       <div id="reqDone" class="req-done" hidden></div>
+      <p class="switch"><button type="button" class="link" data-auth="login">← Назад ко входу</button></p>
+    </form>
+
+    <form id="forgotForm" class="card form auth" hidden>
+      <h2 class="in-card">Забыл пароль</h2>
+      <p class="muted small">Запрос уйдёт админу через бота ВКонтакте. Новый пароль бот пришлёт только в ВК, привязанный к этому аккаунту, — так чужой пароль никто не получит. Если ВК не привязан, пароль передаст админ лично.</p>
+      <label class="field"><i data-ic="user"></i><input id="forgotLogin" autocapitalize="none" spellcheck="false" placeholder="Логин" required></label>
+      <button class="btn primary big" type="submit"><i data-ic="vk"></i>Отправить через ВК</button>
+      <div id="forgotDone" class="req-done" hidden></div>
       <p class="switch"><button type="button" class="link" data-auth="login">← Назад ко входу</button></p>
     </form>
   </section>
@@ -172,7 +182,7 @@
         </details>
 
         <details class="card panel" data-panel="requests" open>
-          <summary><span class="ph"><i data-ic="inbox"></i>Заявки на аккаунт <b id="reqCount" class="count"></b></span><i data-ic="right"></i></summary>
+          <summary><span class="ph"><i data-ic="inbox"></i>Запросы из ВК <b id="reqCount" class="count"></b></span><i data-ic="right"></i></summary>
           <div class="panel-body"><div id="aRequests"></div></div>
         </details>
 

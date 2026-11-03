@@ -202,8 +202,8 @@ $('#loginForm').addEventListener('submit', e => {
 document.addEventListener('click', e => {
   const auth = e.target.closest('[data-auth]');
   if (auth) {
-    $('#loginForm').hidden = auth.dataset.auth !== 'login';
-    $('#requestForm').hidden = auth.dataset.auth !== 'request';
+    for (const [form, name] of [['#loginForm', 'login'], ['#requestForm', 'request'], ['#forgotForm', 'forgot']]) $(form).hidden = auth.dataset.auth !== name;
+    if (auth.dataset.auth === 'forgot') $('#forgotLogin').value = $('#loginName').value.trim();
   }
   const eye = e.target.closest('[data-eye]');
   if (eye) {
@@ -220,13 +220,9 @@ $('#reqFio').addEventListener('input', () => {
   $('#reqLogin').innerHTML = ok ? `Твой логин будет: <b>${esc(makeLogin(fio))}</b>` : '';
 });
 
-// Сайт до входа ничего записать не может, поэтому заявка уходит сообщением боту ВК:
-// он запишет её для админа и потом пришлёт логин и пароль в этот же чат
-$('#requestForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fio = $('#reqFio').value.trim().replace(/\s+/g, ' ');
-  const group = normGroup($('#reqGroup').value);
-  const text = `Заявка: ${fio}, ${group}`;
+// Сайт до входа ничего записать не может, поэтому заявка и «забыл пароль» уходят сообщением
+// боту ВК: он запишет запрос для админа, а потом пришлёт ответ в ВК
+async function sendViaVk(text, box) {
   const win = window.open('about:blank', '_blank'); // открываем сразу, пока действует клик
   const copied = await copy(text);
   const pub = await fetch(`${PUBLIC_PATH}?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({}));
@@ -236,12 +232,23 @@ $('#requestForm').addEventListener('submit', async e => {
   }
   const url = `https://vk.me/${pub.vkGroup}`;
   if (win) win.location = url;
-  $('#reqDone').hidden = false;
-  $('#reqDone').innerHTML = `
-    <p>${copied ? 'Текст заявки скопирован.' : 'Скопируй текст заявки:'} Вставь его в открывшийся чат ВК и отправь:</p>
+  box.hidden = false;
+  box.innerHTML = `
+    <p>${copied ? 'Текст скопирован.' : 'Скопируй текст:'} Вставь его в открывшийся чат ВК и отправь:</p>
     <div class="code wide">${esc(text)}</div>
     <a class="btn" href="${url}" target="_blank" rel="noopener">${icon('vk')}Открыть чат ещё раз</a>
     <p class="muted small">Бот ответит в течение 5–10 минут.</p>`;
+}
+
+$('#requestForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const fio = $('#reqFio').value.trim().replace(/\s+/g, ' ');
+  sendViaVk(`Заявка: ${fio}, ${normGroup($('#reqGroup').value)}`, $('#reqDone'));
+});
+
+$('#forgotForm').addEventListener('submit', e => {
+  e.preventDefault();
+  sendViaVk(`Сброс пароля: ${$('#forgotLogin').value.trim()}`, $('#forgotDone'));
 });
 
 // ---------- Смена пароля ----------
