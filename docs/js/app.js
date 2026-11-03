@@ -184,5 +184,10 @@ $('#loginForm').addEventListener('submit', e => {
   start();
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator) {
+  // вышла новая версия сайта — новый service worker взял управление, перезагружаемся на неё
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener('controllerchange', () => hadController && location.reload());
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
+}
 S.pass ? start() : showLogin();
